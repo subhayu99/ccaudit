@@ -12,6 +12,7 @@ import {
   searchMessages,
 } from "../src/db/messages.js";
 import type { MessageRow } from "../src/types.js";
+import { addTag, removeTag, getSessionTags, getSessionsByTag } from "../src/db/tags.js";
 
 describe("db/init", () => {
   let tmp: string;
@@ -197,5 +198,50 @@ describe("db/messages", () => {
     insertMessages(db, [msg({ lineNo: 1, textContent: "the dogs were running" })]);
     const hits = searchMessages(db, "dog");
     expect(hits).toHaveLength(1);
+  });
+});
+
+describe("db/tags", () => {
+  let tmp: string;
+  let db: ReturnType<typeof openDb>;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "ccaudit-test-"));
+    db = openDb(join(tmp, "test.db"));
+    for (const id of ["s1", "s2"]) {
+      upsertSession(db, {
+        id, projectDir: "/p", projectLabel: "p", filePath: `/p/${id}.jsonl`,
+        fileMtime: 0, fileSize: 0, startedAt: null, lastActivity: null,
+        gitBranch: null, messageCount: 0, userMsgCount: 0, compactCount: 0,
+        firstPrompt: null, aiTitle: null, indexedAt: 0,
+      });
+    }
+  });
+  afterEach(() => { db.close(); rmSync(tmp, { recursive: true, force: true }); });
+
+  it("adds and lists tags for a session", () => {
+    addTag(db, "s1", "Audit", Date.now());
+    addTag(db, "s1", "ops", Date.now());
+    expect(getSessionTags(db, "s1").sort()).toEqual(["Audit", "ops"]);
+  });
+
+  it("addTag is idempotent (same case)", () => {
+    addTag(db, "s1", "ops", Date.now());
+    addTag(db, "s1", "ops", Date.now());
+    expect(getSessionTags(db, "s1")).toEqual(["ops"]);
+  });
+
+  it("getSessionsByTag is case-insensitive but display case is preserved", () => {
+    addTag(db, "s1", "Audit", Date.now());
+    addTag(db, "s2", "audit", Date.now());
+    const hits = getSessionsByTag(db, "AUDIT");
+    expect(hits.sort()).toEqual(["s1", "s2"]);
+  });
+
+  it("removeTag removes only the matching tag", () => {
+    addTag(db, "s1", "ops", Date.now());
+    addTag(db, "s1", "Audit", Date.now());
+    removeTag(db, "s1", "ops");
+    expect(getSessionTags(db, "s1")).toEqual(["Audit"]);
   });
 });
