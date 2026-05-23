@@ -9,5 +9,5 @@ export default defineConfig({
   splitting: false,
   shims: true,
   banner: { js: "#!/usr/bin/env node" },
-  dts: false,
+  dts: false, // CLI binary — no type declarations needed
 });

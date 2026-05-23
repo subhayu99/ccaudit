@@ -9,13 +9,12 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
-    "isolatedModules": true,
-    "verbatimModuleSyntax": false,
+    "verbatimModuleSyntax": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src/**/*", "tests/**/*", "*.config.ts"],
+  "include": ["src/**/*", "tests/**/*"],
   "exclude": ["node_modules", "dist"]
 }

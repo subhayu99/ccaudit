@@ -5,3 +5,8 @@ dist/
 .env
 .env.local
 coverage/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+.ccaudit/
