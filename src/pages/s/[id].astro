@@ -10,6 +10,8 @@ import MessageAssistant from "../../components/MessageAssistant.astro";
 import ToolUseChip from "../../components/ToolUseChip.astro";
 import ToolResultChip from "../../components/ToolResultChip.astro";
 import AttachmentChip from "../../components/AttachmentChip.astro";
+import CompactWaypoint from "../../components/CompactWaypoint.astro";
+import SidechainBlock from "../../components/SidechainBlock.astro";
 import { classifyMessage } from "../../lib/message-kind";
 
 const { id } = Astro.params;
@@ -24,6 +26,15 @@ db.close();
 
 if (!session) {
   return new Response("session not found", { status: 404 });
+}
+
+const compactIndex = new Map<number, number>(); // lineNo -> compact #
+let compactN = 0;
+for (const m of messages) {
+  if (m.isCompactSummary) {
+    compactN += 1;
+    compactIndex.set(m.lineNo, compactN);
+  }
 }
 
 const title = session.aiTitle ?? session.firstPrompt ?? `Session ${shortSessionId(session.id)}`;
@@ -59,15 +70,16 @@ const title = session.aiTitle ?? session.firstPrompt ?? `Session ${shortSessionI
   <div class="space-y-3">
     {messages.map((m) => {
       const kind = classifyMessage(m);
+      if (kind === "compact-summary") return <CompactWaypoint message={m} index={compactIndex.get(m.lineNo) ?? 0} />;
+      if (kind === "sidechain") return <SidechainBlock message={m} />;
       if (kind === "user-text") return <MessageUser message={m} />;
       if (kind === "assistant-text") return <MessageAssistant message={m} />;
       if (kind === "tool-use") return <ToolUseChip message={m} />;
       if (kind === "tool-result") return <ToolResultChip message={m} />;
       if (kind === "attachment") return <AttachmentChip message={m} />;
-      // compact-summary and sidechain handled in C4
       return (
         <div class="p-2 border border-slate-200 rounded bg-slate-50 text-xs text-slate-500 font-mono">
-          line {m.lineNo} · {m.type}{m.isCompactSummary ? " · COMPACT" : ""}{m.isSidechain ? " · SIDECHAIN" : ""}
+          line {m.lineNo} · {m.type}
         </div>
       );
     })}
