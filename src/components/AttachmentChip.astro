@@ -1,0 +1,11 @@
+---
+import type { MessageRow } from "../types";
+
+interface Props {
+  message: MessageRow;
+}
+const { message } = Astro.props;
+---
+<div class="inline-flex items-center gap-2 text-sm bg-slate-100 border border-slate-200 rounded px-2 py-1 text-slate-600">
+  📎 <span>{message.textContent ?? "(attachment)"}</span>
+</div>

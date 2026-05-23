@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { formatTimestamp, truncate, shortSessionId } from "../src/lib/render.js";
+import { classifyMessage } from "../src/lib/message-kind.js";
+import type { MessageRow } from "../src/types.js";
 
 describe("lib/render", () => {
   it("formatTimestamp returns a readable string", () => {
@@ -26,5 +28,46 @@ describe("lib/render", () => {
 
   it("shortSessionId returns first 8 chars", () => {
     expect(shortSessionId("09a39a76-b1d4-4a22-9b9d-0b33175a09a3")).toBe("09a39a76");
+  });
+});
+
+describe("lib/message-kind", () => {
+  const baseRow = (overrides: Partial<MessageRow> & { rawJson?: string }): MessageRow => ({
+    sessionId: "s", lineNo: 1, uuid: null, parentUuid: null,
+    type: "user", role: null, isSidechain: false, isCompactSummary: false,
+    timestamp: null, textContent: null, rawJson: "{}", ...overrides,
+  });
+
+  it("classifies a plain user message as user-text", () => {
+    expect(classifyMessage(baseRow({
+      type: "user",
+      rawJson: JSON.stringify({ message: { content: "hello" } }),
+    }))).toBe("user-text");
+  });
+
+  it("classifies an assistant message with tool_use as tool-use", () => {
+    expect(classifyMessage(baseRow({
+      type: "assistant",
+      rawJson: JSON.stringify({ message: { content: [{ type: "tool_use", name: "Read" }] } }),
+    }))).toBe("tool-use");
+  });
+
+  it("classifies a user message carrying tool_result as tool-result", () => {
+    expect(classifyMessage(baseRow({
+      type: "user",
+      rawJson: JSON.stringify({ message: { content: [{ type: "tool_result", content: "" }] } }),
+    }))).toBe("tool-result");
+  });
+
+  it("classifies isCompactSummary regardless of type", () => {
+    expect(classifyMessage(baseRow({ type: "assistant", isCompactSummary: true }))).toBe("compact-summary");
+  });
+
+  it("classifies isSidechain regardless of type", () => {
+    expect(classifyMessage(baseRow({ type: "assistant", isSidechain: true }))).toBe("sidechain");
+  });
+
+  it("classifies attachment type as attachment", () => {
+    expect(classifyMessage(baseRow({ type: "attachment" }))).toBe("attachment");
   });
 });

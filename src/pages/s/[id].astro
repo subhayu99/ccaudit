@@ -7,6 +7,10 @@ import { formatTimestamp, shortSessionId } from "../../lib/render";
 import { INDEX_DB_PATH } from "../../paths";
 import MessageUser from "../../components/MessageUser.astro";
 import MessageAssistant from "../../components/MessageAssistant.astro";
+import ToolUseChip from "../../components/ToolUseChip.astro";
+import ToolResultChip from "../../components/ToolResultChip.astro";
+import AttachmentChip from "../../components/AttachmentChip.astro";
+import { classifyMessage } from "../../lib/message-kind";
 
 const { id } = Astro.params;
 if (!id) {
@@ -54,17 +58,16 @@ const title = session.aiTitle ?? session.firstPrompt ?? `Session ${shortSessionI
 
   <div class="space-y-3">
     {messages.map((m) => {
-      if (m.type === "user" && m.textContent && !m.isSidechain) {
-        return <MessageUser message={m} />;
-      }
-      if (m.type === "assistant" && m.textContent && !m.isCompactSummary && !m.isSidechain) {
-        return <MessageAssistant message={m} />;
-      }
-      // Other types deferred to C3/C4 — show as fallback for now.
+      const kind = classifyMessage(m);
+      if (kind === "user-text") return <MessageUser message={m} />;
+      if (kind === "assistant-text") return <MessageAssistant message={m} />;
+      if (kind === "tool-use") return <ToolUseChip message={m} />;
+      if (kind === "tool-result") return <ToolResultChip message={m} />;
+      if (kind === "attachment") return <AttachmentChip message={m} />;
+      // compact-summary and sidechain handled in C4
       return (
         <div class="p-2 border border-slate-200 rounded bg-slate-50 text-xs text-slate-500 font-mono">
-          line {m.lineNo} · {m.type}{m.role ? ` (${m.role})` : ""}{m.isCompactSummary ? " · COMPACT" : ""}{m.isSidechain ? " · SIDECHAIN" : ""}
-          {m.textContent && <div class="mt-1">{m.textContent.slice(0, 200)}</div>}
+          line {m.lineNo} · {m.type}{m.isCompactSummary ? " · COMPACT" : ""}{m.isSidechain ? " · SIDECHAIN" : ""}
         </div>
       );
     })}
