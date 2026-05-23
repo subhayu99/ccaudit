@@ -5,6 +5,13 @@ import { tmpdir } from "node:os";
 import { openDb } from "../src/db/init.js";
 import { upsertSession, getSession, listSessions } from "../src/db/sessions.js";
 import type { Session } from "../src/types.js";
+import {
+  insertMessages,
+  deleteSessionMessages,
+  getSessionMessages,
+  searchMessages,
+} from "../src/db/messages.js";
+import type { MessageRow } from "../src/types.js";
 
 describe("db/init", () => {
   let tmp: string;
@@ -113,5 +120,82 @@ describe("db/sessions", () => {
     upsertSession(db, fixture({ id: "b", projectDir: "/p2" }));
     const rows = listSessions(db, { projectDir: "/p1" });
     expect(rows.map((r) => r.id)).toEqual(["a"]);
+  });
+});
+
+describe("db/messages", () => {
+  let tmp: string;
+  let db: ReturnType<typeof openDb>;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "ccaudit-test-"));
+    db = openDb(join(tmp, "test.db"));
+    upsertSession(db, {
+      id: "s1",
+      projectDir: "/p",
+      projectLabel: "p",
+      filePath: "/p/s1.jsonl",
+      fileMtime: 0,
+      fileSize: 0,
+      startedAt: null,
+      lastActivity: null,
+      gitBranch: null,
+      messageCount: 0,
+      userMsgCount: 0,
+      compactCount: 0,
+      firstPrompt: null,
+      aiTitle: null,
+      indexedAt: 0,
+    });
+  });
+  afterEach(() => {
+    db.close();
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  const msg = (overrides: Partial<MessageRow>): MessageRow => ({
+    sessionId: "s1",
+    lineNo: 1,
+    uuid: null,
+    parentUuid: null,
+    type: "user",
+    role: "user",
+    isSidechain: false,
+    isCompactSummary: false,
+    timestamp: null,
+    textContent: "hello world",
+    rawJson: "{}",
+    ...overrides,
+  });
+
+  it("inserts and retrieves messages in line order", () => {
+    insertMessages(db, [msg({ lineNo: 2, textContent: "second" }), msg({ lineNo: 1, textContent: "first" })]);
+    const rows = getSessionMessages(db, "s1");
+    expect(rows.map((r) => r.lineNo)).toEqual([1, 2]);
+    expect(rows[0]!.textContent).toBe("first");
+  });
+
+  it("deleteSessionMessages removes all rows for a session", () => {
+    insertMessages(db, [msg({ lineNo: 1 }), msg({ lineNo: 2 })]);
+    deleteSessionMessages(db, "s1");
+    expect(getSessionMessages(db, "s1")).toEqual([]);
+  });
+
+  it("FTS5 search returns messages matching the query", () => {
+    insertMessages(db, [
+      msg({ lineNo: 1, textContent: "the quick brown fox" }),
+      msg({ lineNo: 2, textContent: "lazy dog jumps" }),
+    ]);
+    const hits = searchMessages(db, "fox");
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.sessionId).toBe("s1");
+    expect(hits[0]!.lineNo).toBe(1);
+    expect(hits[0]!.snippet).toContain("fox");
+  });
+
+  it("FTS5 search applies porter stemming", () => {
+    insertMessages(db, [msg({ lineNo: 1, textContent: "the dogs were running" })]);
+    const hits = searchMessages(db, "dog");
+    expect(hits).toHaveLength(1);
   });
 });
