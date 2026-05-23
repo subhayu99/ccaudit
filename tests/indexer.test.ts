@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { walkProjects } from "../src/indexer/walk.js";
@@ -7,6 +7,10 @@ import { parseJsonlFile } from "../src/indexer/parse.js";
 import { extractText } from "../src/indexer/extract.js";
 import { newAggregator, finalizeAggregator } from "../src/indexer/aggregate.js";
 import type { RawMessage } from "../src/types.js";
+import { indexAll } from "../src/indexer/index-runner.js";
+import { openDb } from "../src/db/init.js";
+import { listSessions } from "../src/db/sessions.js";
+import { getSessionMessages } from "../src/db/messages.js";
 
 describe("indexer/walk", () => {
   let tmp: string;
@@ -137,5 +141,57 @@ describe("indexer/aggregate", () => {
     expect(result.lastActivity).toBeGreaterThanOrEqual(result.startedAt!);
     expect(result.messages).toHaveLength(5);
     expect(result.messages[3]!.isCompactSummary).toBe(true);
+  });
+});
+
+describe("indexer/index-runner", () => {
+  let tmp: string;
+  let claudeProjects: string;
+  let db: ReturnType<typeof openDb>;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "ccaudit-run-"));
+    claudeProjects = join(tmp, "projects");
+    mkdirSync(claudeProjects, { recursive: true });
+    db = openDb(join(tmp, "test.db"));
+
+    // copy fixtures into a synthetic ~/.claude/projects/
+    const proj = join(claudeProjects, "-Users-x-proj");
+    mkdirSync(proj);
+    writeFileSync(join(proj, "aaa.jsonl"),
+      `{"type":"user","sessionId":"aaa","timestamp":"2026-05-23T10:00:00Z","cwd":"/Users/x/proj","gitBranch":"main","message":{"role":"user","content":"hello"}}\n` +
+      `{"type":"assistant","sessionId":"aaa","timestamp":"2026-05-23T10:00:05Z","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]}}\n`
+    );
+  });
+  afterEach(() => { db.close(); rmSync(tmp, { recursive: true, force: true }); });
+
+  it("indexes all sessions and stores aggregates + messages", async () => {
+    const stats = await indexAll(db, { baseDir: claudeProjects });
+    expect(stats.sessionsIndexed).toBe(1);
+    const all = listSessions(db);
+    expect(all).toHaveLength(1);
+    expect(all[0]!.id).toBe("aaa");
+    expect(all[0]!.userMsgCount).toBe(1);
+    expect(getSessionMessages(db, "aaa")).toHaveLength(2);
+  });
+
+  it("skips files whose mtime+size are unchanged on second run", async () => {
+    const first = await indexAll(db, { baseDir: claudeProjects });
+    expect(first.sessionsIndexed).toBe(1);
+    const second = await indexAll(db, { baseDir: claudeProjects });
+    expect(second.sessionsIndexed).toBe(0);
+    expect(second.sessionsSkipped).toBe(1);
+  });
+
+  it("re-indexes a file whose mtime has changed", async () => {
+    await indexAll(db, { baseDir: claudeProjects });
+    // touch the file
+    const filePath = join(claudeProjects, "-Users-x-proj", "aaa.jsonl");
+    const newContent = readFileSync(filePath, "utf8") +
+      `{"type":"user","sessionId":"aaa","timestamp":"2026-05-23T10:01:00Z","message":{"role":"user","content":"more"}}\n`;
+    writeFileSync(filePath, newContent);
+    const stats = await indexAll(db, { baseDir: claudeProjects });
+    expect(stats.sessionsIndexed).toBe(1);
+    expect(getSessionMessages(db, "aaa")).toHaveLength(3);
   });
 });
