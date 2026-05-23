@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { walkProjects } from "../src/indexer/walk.js";
 import { parseJsonlFile } from "../src/indexer/parse.js";
 import { extractText } from "../src/indexer/extract.js";
+import { newAggregator, finalizeAggregator } from "../src/indexer/aggregate.js";
 import type { RawMessage } from "../src/types.js";
 
 describe("indexer/walk", () => {
@@ -116,5 +117,25 @@ describe("indexer/extract", () => {
 
   it("returns null for unknown structure", () => {
     expect(extractText({ type: "queue-operation" } as RawMessage)).toBeNull();
+  });
+});
+
+describe("indexer/aggregate", () => {
+  it("computes session aggregates from a fixture file", async () => {
+    const agg = newAggregator();
+    for await (const { lineNo, raw, rawJson } of parseJsonlFile("tests/fixtures/projects/compact/session-bbb.jsonl")) {
+      agg.observe({ lineNo, raw, rawJson, sessionId: "bbb" });
+    }
+    const result = finalizeAggregator(agg);
+    expect(result.messageCount).toBe(5);
+    expect(result.userMsgCount).toBe(2);
+    expect(result.compactCount).toBe(1);
+    expect(result.firstPrompt).toBe("first prompt");
+    expect(result.aiTitle).toBe("the AI title");
+    expect(result.gitBranch).toBe("main");
+    expect(result.startedAt).toBeGreaterThan(0);
+    expect(result.lastActivity).toBeGreaterThanOrEqual(result.startedAt!);
+    expect(result.messages).toHaveLength(5);
+    expect(result.messages[3]!.isCompactSummary).toBe(true);
   });
 });

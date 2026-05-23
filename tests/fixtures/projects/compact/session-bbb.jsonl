@@ -1,0 +1,5 @@
+{"type":"user","sessionId":"bbb","timestamp":"2026-05-23T10:00:00Z","cwd":"/Users/x/proj","gitBranch":"main","message":{"role":"user","content":"first prompt"}}
+{"type":"assistant","sessionId":"bbb","timestamp":"2026-05-23T10:00:05Z","message":{"role":"assistant","content":[{"type":"text","text":"thinking..."}]}}
+{"type":"user","sessionId":"bbb","timestamp":"2026-05-23T10:00:10Z","message":{"role":"user","content":"more"}}
+{"type":"assistant","sessionId":"bbb","timestamp":"2026-05-23T10:00:15Z","isCompactSummary":true,"message":{"role":"assistant","content":[{"type":"text","text":"compact summary"}]}}
+{"type":"ai-title","sessionId":"bbb","title":"the AI title"}
