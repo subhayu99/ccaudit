@@ -1,0 +1,29 @@
+---
+import type { Session } from "../types";
+import { formatTimestamp, truncate, shortSessionId } from "../lib/render";
+
+interface Props {
+  session: Session;
+}
+const { session } = Astro.props;
+---
+<tr class="border-b border-slate-200 hover:bg-slate-100 cursor-pointer">
+  <td class="px-3 py-2 whitespace-nowrap text-slate-600 text-sm">
+    {formatTimestamp(session.lastActivity)}
+  </td>
+  <td class="px-3 py-2 text-sm">
+    <a href={`/s/${session.id}`} class="text-blue-700 hover:underline font-mono">
+      {shortSessionId(session.id)}
+    </a>
+  </td>
+  <td class="px-3 py-2 text-sm">{session.projectLabel}</td>
+  <td class="px-3 py-2 text-right tabular-nums text-sm">{session.messageCount}</td>
+  <td class="px-3 py-2 text-right tabular-nums text-sm">
+    {session.compactCount > 0
+      ? <span class="text-amber-700 font-semibold">{session.compactCount}</span>
+      : <span class="text-slate-400">0</span>}
+  </td>
+  <td class="px-3 py-2 text-sm text-slate-600">
+    {truncate(session.firstPrompt, 80)}
+  </td>
+</tr>

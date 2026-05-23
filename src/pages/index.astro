@@ -1,7 +1,37 @@
 ---
 import Base from "../layouts/Base.astro";
+import SessionRow from "../components/SessionRow.astro";
+import { openDb } from "../db/init";
+import { listSessions } from "../db/sessions";
+import { INDEX_DB_PATH } from "../paths";
+
+const db = openDb(INDEX_DB_PATH);
+const sessions = listSessions(db, { limit: 200 });
+db.close();
 ---
 <Base title="ccaudit — sessions">
-  <h1 class="text-2xl font-bold">Sessions</h1>
-  <p class="text-slate-500 mt-2">(Session list lands in Task B1.)</p>
+  <h1 class="text-2xl font-bold mb-4">Sessions</h1>
+  {sessions.length === 0 ? (
+    <p class="text-slate-500">
+      No sessions indexed yet. Run <code class="bg-slate-200 px-1 rounded">ccaudit reindex</code> in a terminal.
+    </p>
+  ) : (
+    <div class="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-100 text-slate-600 text-xs uppercase">
+          <tr>
+            <th class="px-3 py-2 text-left font-medium">Last activity</th>
+            <th class="px-3 py-2 text-left font-medium">Session</th>
+            <th class="px-3 py-2 text-left font-medium">Project</th>
+            <th class="px-3 py-2 text-right font-medium">Msgs</th>
+            <th class="px-3 py-2 text-right font-medium">Compacts</th>
+            <th class="px-3 py-2 text-left font-medium">First prompt</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sessions.map((s) => <SessionRow session={s} />)}
+        </tbody>
+      </table>
+    </div>
+  )}
 </Base>
