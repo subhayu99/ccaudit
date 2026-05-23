@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { openDb } from "../src/db/init.js";
-import { upsertSession, getSession, listSessions } from "../src/db/sessions.js";
+import { upsertSession, getSession, listSessions, listProjects } from "../src/db/sessions.js";
 import type { Session } from "../src/types.js";
 import {
   insertMessages,
@@ -121,6 +121,18 @@ describe("db/sessions", () => {
     upsertSession(db, fixture({ id: "b", projectDir: "/p2" }));
     const rows = listSessions(db, { projectDir: "/p1" });
     expect(rows.map((r) => r.id)).toEqual(["a"]);
+  });
+
+  it("listProjects groups sessions by project_dir with counts and last activity", () => {
+    upsertSession(db, fixture({ id: "a", projectDir: "/p1", projectLabel: "p1", lastActivity: 100 }));
+    upsertSession(db, fixture({ id: "b", projectDir: "/p1", projectLabel: "p1", lastActivity: 200 }));
+    upsertSession(db, fixture({ id: "c", projectDir: "/p2", projectLabel: "p2", lastActivity: 150 }));
+    const projs = listProjects(db);
+    expect(projs).toHaveLength(2);
+    expect(projs[0]!.projectDir).toBe("/p1");
+    expect(projs[0]!.sessionCount).toBe(2);
+    expect(projs[0]!.lastActivity).toBe(200);
+    expect(projs[1]!.projectDir).toBe("/p2");
   });
 });
 

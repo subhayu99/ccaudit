@@ -1,0 +1,40 @@
+---
+import Base from "../layouts/Base.astro";
+import { openDb } from "../db/init";
+import { listProjects } from "../db/sessions";
+import { formatTimestamp } from "../lib/render";
+import { INDEX_DB_PATH } from "../paths";
+
+const db = openDb(INDEX_DB_PATH);
+const projects = listProjects(db);
+db.close();
+---
+<Base title="ccaudit — projects">
+  <h1 class="text-2xl font-bold mb-4">Projects</h1>
+  {projects.length === 0 ? (
+    <p class="text-slate-500">No projects indexed yet.</p>
+  ) : (
+    <div class="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-100 text-slate-600 text-xs uppercase">
+          <tr>
+            <th class="px-3 py-2 text-left font-medium">Last activity</th>
+            <th class="px-3 py-2 text-left font-medium">Project</th>
+            <th class="px-3 py-2 text-right font-medium">Sessions</th>
+            <th class="px-3 py-2 text-left font-medium">Path</th>
+          </tr>
+        </thead>
+        <tbody>
+          {projects.map((p) => (
+            <tr class="border-b border-slate-200 hover:bg-slate-100">
+              <td class="px-3 py-2 whitespace-nowrap text-slate-600">{formatTimestamp(p.lastActivity)}</td>
+              <td class="px-3 py-2 font-semibold">{p.projectLabel}</td>
+              <td class="px-3 py-2 text-right tabular-nums">{p.sessionCount}</td>
+              <td class="px-3 py-2 text-slate-500 font-mono text-xs">{p.projectDir}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</Base>

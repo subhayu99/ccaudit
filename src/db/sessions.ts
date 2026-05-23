@@ -103,3 +103,25 @@ export function getSessionByFilePath(db: Database.Database, filePath: string): S
     .get(filePath) as SessionRowSql | undefined;
   return row ? rowToSession(row) : null;
 }
+
+export type ProjectSummary = {
+  projectDir: string;
+  projectLabel: string;
+  sessionCount: number;
+  lastActivity: number | null;
+};
+
+export function listProjects(db: Database.Database): ProjectSummary[] {
+  const rows = db
+    .prepare(
+      `SELECT project_dir   AS projectDir,
+              project_label AS projectLabel,
+              COUNT(*)      AS sessionCount,
+              MAX(last_activity) AS lastActivity
+         FROM sessions
+        GROUP BY project_dir, project_label
+        ORDER BY lastActivity DESC NULLS LAST, projectLabel ASC`
+    )
+    .all() as ProjectSummary[];
+  return rows;
+}
