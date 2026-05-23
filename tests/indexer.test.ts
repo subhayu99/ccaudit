@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { walkProjects } from "../src/indexer/walk.js";
+import { parseJsonlFile } from "../src/indexer/parse.js";
 
 describe("indexer/walk", () => {
   let tmp: string;
@@ -35,5 +36,33 @@ describe("indexer/walk", () => {
 
   it("returns empty array if base dir does not exist", () => {
     expect(walkProjects(join(tmp, "nope"))).toEqual([]);
+  });
+});
+
+describe("indexer/parse", () => {
+  it("yields one parsed RawMessage per valid line, with 1-based lineNo", async () => {
+    const fixture = "tests/fixtures/projects/basic/session-aaa.jsonl";
+    const out: Array<{ lineNo: number; raw: unknown; rawJson: string }> = [];
+    for await (const item of parseJsonlFile(fixture)) {
+      out.push(item);
+    }
+    expect(out).toHaveLength(2);
+    expect(out[0]!.lineNo).toBe(1);
+    expect(out[1]!.lineNo).toBe(2);
+    expect((out[0]!.raw as any).type).toBe("user");
+    expect(out[0]!.rawJson).toContain('"hello"');
+  });
+
+  it("skips malformed lines and reports them via the onError callback", async () => {
+    const fixture = "tests/fixtures/projects/malformed/session-ddd.jsonl";
+    const errors: Array<{ lineNo: number; line: string }> = [];
+    const out = [];
+    for await (const item of parseJsonlFile(fixture, { onError: (e) => errors.push(e) })) {
+      out.push(item);
+    }
+    expect(out).toHaveLength(2);          // lines 1 and 3
+    expect(out.map((o) => o.lineNo)).toEqual([1, 3]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.lineNo).toBe(2);
   });
 });

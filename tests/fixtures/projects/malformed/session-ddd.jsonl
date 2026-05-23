@@ -1,0 +1,3 @@
+{"type":"user","sessionId":"ddd","message":{"role":"user","content":"line 1"}}
+this is not json
+{"type":"assistant","sessionId":"ddd","message":{"role":"assistant","content":[{"type":"text","text":"line 3"}]}}
