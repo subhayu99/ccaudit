@@ -5,6 +5,8 @@ import { getSession } from "../../db/sessions";
 import { getSessionMessages } from "../../db/messages";
 import { formatTimestamp, shortSessionId } from "../../lib/render";
 import { INDEX_DB_PATH } from "../../paths";
+import MessageUser from "../../components/MessageUser.astro";
+import MessageAssistant from "../../components/MessageAssistant.astro";
 
 const { id } = Astro.params;
 if (!id) {
@@ -51,14 +53,20 @@ const title = session.aiTitle ?? session.firstPrompt ?? `Session ${shortSessionI
   </div>
 
   <div class="space-y-3">
-    {/* Message rendering lands in Task C2-C4 */}
-    {messages.map((m) => (
-      <div class="p-3 border border-slate-200 rounded-lg bg-white">
-        <div class="text-xs text-slate-400 mb-1">
-          line {m.lineNo} · {m.type}{m.role ? ` (${m.role})` : ""}
+    {messages.map((m) => {
+      if (m.type === "user" && m.textContent && !m.isSidechain) {
+        return <MessageUser message={m} />;
+      }
+      if (m.type === "assistant" && m.textContent && !m.isCompactSummary && !m.isSidechain) {
+        return <MessageAssistant message={m} />;
+      }
+      // Other types deferred to C3/C4 — show as fallback for now.
+      return (
+        <div class="p-2 border border-slate-200 rounded bg-slate-50 text-xs text-slate-500 font-mono">
+          line {m.lineNo} · {m.type}{m.role ? ` (${m.role})` : ""}{m.isCompactSummary ? " · COMPACT" : ""}{m.isSidechain ? " · SIDECHAIN" : ""}
+          {m.textContent && <div class="mt-1">{m.textContent.slice(0, 200)}</div>}
         </div>
-        <pre class="text-sm whitespace-pre-wrap overflow-x-auto">{m.textContent ?? "(no text)"}</pre>
-      </div>
-    ))}
+      );
+    })}
   </div>
 </Base>

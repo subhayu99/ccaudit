@@ -1,0 +1,18 @@
+---
+import type { MessageRow } from "../types";
+import { renderMarkdown } from "../lib/markdown";
+import { formatTimestamp } from "../lib/render";
+
+interface Props {
+  message: MessageRow;
+}
+const { message } = Astro.props;
+const html = await renderMarkdown(message.textContent);
+---
+<div class="border-l-4 border-slate-300 bg-white rounded-r-lg p-4 border-y border-r border-slate-200">
+  <div class="text-xs text-slate-600 font-semibold mb-2 flex justify-between">
+    <span>Claude</span>
+    <span class="text-slate-500 font-normal">{formatTimestamp(message.timestamp)}</span>
+  </div>
+  <div class="prose prose-sm max-w-none" set:html={html}></div>
+</div>
