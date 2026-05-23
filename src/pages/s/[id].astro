@@ -1,0 +1,64 @@
+---
+import Base from "../../layouts/Base.astro";
+import { openDb } from "../../db/init";
+import { getSession } from "../../db/sessions";
+import { getSessionMessages } from "../../db/messages";
+import { formatTimestamp, shortSessionId } from "../../lib/render";
+import { INDEX_DB_PATH } from "../../paths";
+
+const { id } = Astro.params;
+if (!id) {
+  return new Response("missing id", { status: 400 });
+}
+
+const db = openDb(INDEX_DB_PATH);
+const session = getSession(db, id);
+const messages = session ? getSessionMessages(db, id) : [];
+db.close();
+
+if (!session) {
+  return new Response("session not found", { status: 404 });
+}
+
+const title = session.aiTitle ?? session.firstPrompt ?? `Session ${shortSessionId(session.id)}`;
+---
+<Base title={`ccaudit — ${title}`}>
+  <div class="mb-6">
+    <div class="text-slate-500 text-sm">
+      <a href="/" class="hover:underline">← All sessions</a>
+      <span class="mx-2">·</span>
+      <a href={`/projects`} class="hover:underline">{session.projectLabel}</a>
+    </div>
+    <h1 class="text-2xl font-bold mt-2">{title}</h1>
+    <div class="text-sm text-slate-500 mt-1">
+      <span>{formatTimestamp(session.startedAt)} → {formatTimestamp(session.lastActivity)}</span>
+      <span class="mx-2">·</span>
+      <span>{session.messageCount} messages</span>
+      {session.compactCount > 0 && (
+        <>
+          <span class="mx-2">·</span>
+          <span class="text-amber-700">{session.compactCount} compact event{session.compactCount === 1 ? "" : "s"}</span>
+        </>
+      )}
+      {session.gitBranch && (
+        <>
+          <span class="mx-2">·</span>
+          <span class="font-mono text-xs">{session.gitBranch}</span>
+        </>
+      )}
+    </div>
+    <div class="text-xs text-slate-400 mt-1 font-mono">{session.id}</div>
+  </div>
+
+  <div class="space-y-3">
+    {/* Message rendering lands in Task C2-C4 */}
+    {messages.map((m) => (
+      <div class="p-3 border border-slate-200 rounded-lg bg-white">
+        <div class="text-xs text-slate-400 mb-1">
+          line {m.lineNo} · {m.type}{m.role ? ` (${m.role})` : ""}
+        </div>
+        <pre class="text-sm whitespace-pre-wrap overflow-x-auto">{m.textContent ?? "(no text)"}</pre>
+      </div>
+    ))}
+  </div>
+</Base>
