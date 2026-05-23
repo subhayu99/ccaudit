@@ -44,6 +44,7 @@ export type RawMessage = {
   uuid?: string;
   parentUuid?: string;
   sessionId?: string;
+  // ISO 8601 string ("2026-05-23T10:00:00Z") or ms epoch. Indexer normalises to ms.
   timestamp?: string | number;
   isSidechain?: boolean;
   isCompactSummary?: boolean;

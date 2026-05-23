@@ -9,6 +9,11 @@ export const LOGS_DIR = join(CCAUDIT_DIR, "logs");
 
 // Decode the dir-hash back to a real path. Claude Code stores
 // ~/foo/bar as "-foo-bar" (slashes -> dashes, leading slash -> leading dash).
+//
+// WARNING: This decode is ambiguous for paths that contain literal dashes —
+// e.g. "/Users/x/my-project" is encoded the same way as "/Users/x/my/project".
+// The encoding has no inverse; this function returns a best-effort heuristic.
+// Callers should treat the result as a display label, not a canonical path.
 export function decodeProjectDir(encoded: string): string {
   return encoded.replace(/-/g, "/");
 }
