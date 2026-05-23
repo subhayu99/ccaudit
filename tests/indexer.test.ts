@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { walkProjects } from "../src/indexer/walk.js";
 import { parseJsonlFile } from "../src/indexer/parse.js";
+import { extractText } from "../src/indexer/extract.js";
+import type { RawMessage } from "../src/types.js";
 
 describe("indexer/walk", () => {
   let tmp: string;
@@ -64,5 +66,55 @@ describe("indexer/parse", () => {
     expect(out.map((o) => o.lineNo)).toEqual([1, 3]);
     expect(errors).toHaveLength(1);
     expect(errors[0]!.lineNo).toBe(2);
+  });
+});
+
+describe("indexer/extract", () => {
+  it("extracts text for a user message", () => {
+    const raw: RawMessage = { type: "user", message: { role: "user", content: "hello world" } };
+    expect(extractText(raw)).toBe("hello world");
+  });
+
+  it("extracts text from an assistant content array", () => {
+    const raw: RawMessage = {
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "text", text: "hi there" }] as unknown as unknown },
+    };
+    expect(extractText(raw)).toBe("hi there");
+  });
+
+  it("skips tool_use entries when extracting assistant text", () => {
+    const raw: RawMessage = {
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "tool_use", name: "Read", input: { path: "/x" } },
+          { type: "text", text: "after the tool" },
+        ] as unknown as unknown,
+      },
+    };
+    expect(extractText(raw)).toBe("after the tool");
+  });
+
+  it("returns a marker for attachment messages", () => {
+    const raw = { type: "attachment", attachment: { filename: "x.png" } } as unknown as RawMessage;
+    expect(extractText(raw)).toBe("[attachment: x.png]");
+  });
+
+  it("truncates tool_result content to 2000 chars", () => {
+    const big = "x".repeat(3000);
+    const raw: RawMessage = {
+      type: "user",
+      message: {
+        role: "user",
+        content: [{ type: "tool_result", content: [{ type: "text", text: big }] }] as unknown as unknown,
+      },
+    };
+    expect(extractText(raw)!.length).toBeLessThanOrEqual(2000);
+  });
+
+  it("returns null for unknown structure", () => {
+    expect(extractText({ type: "queue-operation" } as RawMessage)).toBeNull();
   });
 });
