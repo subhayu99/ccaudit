@@ -4,7 +4,7 @@
   "description": "Browse, search, and audit your Claude Code session history",
   "type": "module",
   "bin": {
-    "ccaudit": "./dist/cli/index.js"
+    "ccaudit": "./dist/index.js"
   },
   "scripts": {
     "build": "tsup",
