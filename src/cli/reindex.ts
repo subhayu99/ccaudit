@@ -1,3 +1,23 @@
-export async function reindexCommand(_opts: { force?: boolean }): Promise<void> {
-  console.log("(reindex stub)");
+import kleur from "kleur";
+import { openDb } from "../db/init.js";
+import { indexAll } from "../indexer/index-runner.js";
+import { INDEX_DB_PATH, CLAUDE_PROJECTS_DIR } from "../paths.js";
+
+export async function reindexCommand(opts: { force?: boolean }): Promise<void> {
+  const db = openDb(INDEX_DB_PATH);
+  try {
+    const start = Date.now();
+    const stats = await indexAll(db, {
+      baseDir: CLAUDE_PROJECTS_DIR,
+      force: !!opts.force,
+      onProgress: (msg) => process.stderr.write(kleur.dim(`  ${msg}\n`)),
+    });
+    const ms = Date.now() - start;
+    console.log(
+      `Reindex complete in ${ms}ms — indexed ${stats.sessionsIndexed} session(s), ` +
+        `skipped ${stats.sessionsSkipped}, malformed lines: ${stats.malformedLines}, errors: ${stats.errors}.`
+    );
+  } finally {
+    db.close();
+  }
 }

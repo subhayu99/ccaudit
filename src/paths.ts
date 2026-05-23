@@ -1,11 +1,14 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export const CLAUDE_PROJECTS_DIR = join(homedir(), ".claude", "projects");
-export const CCAUDIT_DIR = join(homedir(), ".ccaudit");
-export const INDEX_DB_PATH = join(CCAUDIT_DIR, "index.db");
-export const EXPORTS_DIR = join(CCAUDIT_DIR, "exports");
-export const LOGS_DIR = join(CCAUDIT_DIR, "logs");
+const home = () => homedir();
+const ccauditHome = () => process.env.CCAUDIT_HOME || join(home(), ".ccaudit");
+
+export const CLAUDE_PROJECTS_DIR = process.env.CCAUDIT_PROJECTS_DIR || join(home(), ".claude", "projects");
+export const CCAUDIT_DIR = ccauditHome();
+export const INDEX_DB_PATH = join(ccauditHome(), "index.db");
+export const EXPORTS_DIR = join(ccauditHome(), "exports");
+export const LOGS_DIR = join(ccauditHome(), "logs");
 
 // Decode the dir-hash back to a real path. Claude Code stores
 // ~/foo/bar as "-foo-bar" (slashes -> dashes, leading slash -> leading dash).
