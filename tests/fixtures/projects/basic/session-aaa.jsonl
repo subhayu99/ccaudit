@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"aaa","timestamp":"2026-05-23T10:00:00Z","cwd":"/Users/x/proj","gitBranch":"main","message":{"role":"user","content":"hello"}}
+{"type":"assistant","sessionId":"aaa","timestamp":"2026-05-23T10:00:05Z","message":{"role":"assistant","content":[{"type":"text","text":"hi there"}]}}
