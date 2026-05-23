@@ -94,3 +94,40 @@ describe("cli/search", () => {
     expect(result.stdout).toMatch(/no matches/i);
   });
 });
+
+describe("cli/doctor", () => {
+  let tmp: string;
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "ccaudit-cli-"));
+    const proj = join(tmp, "projects", "-Users-x-proj");
+    mkdirSync(proj, { recursive: true });
+    writeFileSync(join(proj, "sess-x.jsonl"),
+      `{"type":"user","sessionId":"sess-x","timestamp":"2026-05-23T10:00:00Z","message":{"role":"user","content":"hello"}}\n`
+    );
+  });
+  afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+
+  it("reports OK for a healthy setup", () => {
+    const env = {
+      ...process.env,
+      CCAUDIT_HOME: tmp,
+      CCAUDIT_PROJECTS_DIR: join(tmp, "projects"),
+    };
+    spawnSync("npx", ["tsx", "src/cli/index.ts", "reindex"], { env, encoding: "utf8" });
+    const result = spawnSync("npx", ["tsx", "src/cli/index.ts", "doctor"], { env, encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/projects dir.*OK/i);
+    expect(result.stdout).toMatch(/index db.*OK/i);
+  });
+
+  it("reports a problem when projects dir is missing", () => {
+    const env = {
+      ...process.env,
+      CCAUDIT_HOME: tmp,
+      CCAUDIT_PROJECTS_DIR: join(tmp, "does-not-exist"),
+    };
+    const result = spawnSync("npx", ["tsx", "src/cli/index.ts", "doctor"], { env, encoding: "utf8" });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toMatch(/projects dir.*missing|not found|ERR/i);
+  });
+});
