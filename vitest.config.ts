@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
-    testTimeout: 10_000,
+    testTimeout: 60_000,  // up from 10_000 — astro-smoke can take a while to boot
+    hookTimeout: 60_000,
   },
 });
