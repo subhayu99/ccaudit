@@ -3,13 +3,38 @@ import Base from "../layouts/Base.astro";
 import SessionRow from "../components/SessionRow.astro";
 import { openDb } from "../db/init";
 import { listSessions } from "../db/sessions";
+import { getIndexStats } from "../db/stats";
+import { formatTimestamp } from "../lib/render";
 import { INDEX_DB_PATH } from "../paths";
 
 const db = openDb(INDEX_DB_PATH);
 const sessions = listSessions(db, { limit: 200 });
+const stats = getIndexStats(db);
 db.close();
 ---
 <Base title="ccaudit — sessions">
+  <div class="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
+    <div class="bg-white rounded-lg border border-slate-200 p-4 text-center">
+      <div class="text-2xl font-bold text-slate-900">{stats.totalSessions}</div>
+      <div class="text-xs text-slate-500 uppercase mt-1">Sessions</div>
+    </div>
+    <div class="bg-white rounded-lg border border-slate-200 p-4 text-center">
+      <div class="text-2xl font-bold text-slate-900">{stats.totalMessages.toLocaleString()}</div>
+      <div class="text-xs text-slate-500 uppercase mt-1">Messages</div>
+    </div>
+    <div class="bg-white rounded-lg border border-slate-200 p-4 text-center">
+      <div class="text-2xl font-bold text-amber-700">{stats.sessionsWithCompacts}</div>
+      <div class="text-xs text-slate-500 uppercase mt-1">With compacts</div>
+    </div>
+    <div class="bg-white rounded-lg border border-slate-200 p-4 text-center">
+      <div class="text-sm font-mono text-slate-700">{formatTimestamp(stats.oldestSession)}</div>
+      <div class="text-xs text-slate-500 uppercase mt-1">Oldest</div>
+    </div>
+    <div class="bg-white rounded-lg border border-slate-200 p-4 text-center">
+      <div class="text-sm font-mono text-slate-700">{formatTimestamp(stats.newestSession)}</div>
+      <div class="text-xs text-slate-500 uppercase mt-1">Newest</div>
+    </div>
+  </div>
   <h1 class="text-2xl font-bold mb-4">Sessions</h1>
   {sessions.length === 0 ? (
     <p class="text-slate-500">

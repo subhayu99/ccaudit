@@ -13,6 +13,7 @@ import {
 } from "../src/db/messages.js";
 import type { MessageRow } from "../src/types.js";
 import { addTag, removeTag, getSessionTags, getSessionsByTag } from "../src/db/tags.js";
+import { getIndexStats } from "../src/db/stats.js";
 
 describe("db/init", () => {
   let tmp: string;
@@ -262,5 +263,38 @@ describe("db/tags", () => {
     addTag(db, "s1", "Audit", Date.now());
     removeTag(db, "s1", "ops");
     expect(getSessionTags(db, "s1")).toEqual(["Audit"]);
+  });
+});
+
+describe("db/stats", () => {
+  let tmp: string;
+  let db: ReturnType<typeof openDb>;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "ccaudit-test-"));
+    db = openDb(join(tmp, "test.db"));
+  });
+  afterEach(() => {
+    db.close();
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("returns aggregate stats across all sessions", () => {
+    const s = (id: string, msgs: number, compacts: number, start: number, end: number) => ({
+      id, projectDir: "/p", projectLabel: "p", filePath: `/p/${id}.jsonl`,
+      fileMtime: 0, fileSize: 0, startedAt: start, lastActivity: end,
+      gitBranch: null, messageCount: msgs, userMsgCount: 0,
+      compactCount: compacts, firstPrompt: null, aiTitle: null, cwd: null, indexedAt: 0,
+    });
+    upsertSession(db, s("a", 100, 0, 1000, 2000));
+    upsertSession(db, s("b", 200, 2, 500, 3000));
+    upsertSession(db, s("c", 50, 1, 1500, 2500));
+
+    const stats = getIndexStats(db);
+    expect(stats.totalSessions).toBe(3);
+    expect(stats.totalMessages).toBe(350);
+    expect(stats.sessionsWithCompacts).toBe(2);
+    expect(stats.oldestSession).toBe(500);
+    expect(stats.newestSession).toBe(3000);
   });
 });
