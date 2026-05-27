@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   compact_count   INTEGER NOT NULL DEFAULT 0,
   first_prompt    TEXT,
   ai_title        TEXT,
+  cwd             TEXT,
   indexed_at      INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_last_activity ON sessions(last_activity DESC);
@@ -81,5 +82,9 @@ export function openDb(path: string): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
+  const cols = db.pragma("table_info(sessions)") as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "cwd")) {
+    db.exec("ALTER TABLE sessions ADD COLUMN cwd TEXT");
+  }
   return db;
 }

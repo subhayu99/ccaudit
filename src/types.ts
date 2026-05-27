@@ -14,6 +14,7 @@ export type Session = {
   compactCount: number;
   firstPrompt: string | null;
   aiTitle: string | null;
+  cwd: string | null;
   indexedAt: number;
 };
 

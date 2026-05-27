@@ -93,6 +93,7 @@ export async function indexAll(
       compactCount: state.compactCount,
       firstPrompt: state.firstPrompt,
       aiTitle: state.aiTitle,
+      cwd: state.cwd,
       indexedAt: Date.now(),
     };
 

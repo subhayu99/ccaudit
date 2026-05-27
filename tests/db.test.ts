@@ -90,6 +90,7 @@ describe("db/sessions", () => {
     compactCount: 0,
     firstPrompt: "hello",
     aiTitle: null,
+    cwd: "/Users/x/proj",
     indexedAt: 1100,
     ...overrides,
   });
@@ -134,6 +135,11 @@ describe("db/sessions", () => {
     expect(projs[0]!.lastActivity).toBe(200);
     expect(projs[1]!.projectDir).toBe("/p2");
   });
+
+  it("stores and retrieves cwd", () => {
+    upsertSession(db, fixture({ cwd: "/home/user/my-project" }));
+    expect(getSession(db, "sess-1")!.cwd).toBe("/home/user/my-project");
+  });
 });
 
 describe("db/messages", () => {
@@ -158,6 +164,7 @@ describe("db/messages", () => {
       compactCount: 0,
       firstPrompt: null,
       aiTitle: null,
+      cwd: null,
       indexedAt: 0,
     });
   });
@@ -225,7 +232,7 @@ describe("db/tags", () => {
         id, projectDir: "/p", projectLabel: "p", filePath: `/p/${id}.jsonl`,
         fileMtime: 0, fileSize: 0, startedAt: null, lastActivity: null,
         gitBranch: null, messageCount: 0, userMsgCount: 0, compactCount: 0,
-        firstPrompt: null, aiTitle: null, indexedAt: 0,
+        firstPrompt: null, aiTitle: null, cwd: null, indexedAt: 0,
       });
     }
   });

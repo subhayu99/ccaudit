@@ -16,6 +16,7 @@ type SessionRowSql = {
   compact_count: number;
   first_prompt: string | null;
   ai_title: string | null;
+  cwd: string | null;
   indexed_at: number;
 };
 
@@ -35,6 +36,7 @@ function rowToSession(r: SessionRowSql): Session {
     compactCount: r.compact_count,
     firstPrompt: r.first_prompt,
     aiTitle: r.ai_title,
+    cwd: r.cwd,
     indexedAt: r.indexed_at,
   };
 }
@@ -44,11 +46,11 @@ export function upsertSession(db: Database.Database, s: Session): void {
     `INSERT INTO sessions
        (id, project_dir, project_label, file_path, file_mtime, file_size,
         started_at, last_activity, git_branch, message_count, user_msg_count,
-        compact_count, first_prompt, ai_title, indexed_at)
+        compact_count, first_prompt, ai_title, cwd, indexed_at)
      VALUES
        (@id, @projectDir, @projectLabel, @filePath, @fileMtime, @fileSize,
         @startedAt, @lastActivity, @gitBranch, @messageCount, @userMsgCount,
-        @compactCount, @firstPrompt, @aiTitle, @indexedAt)
+        @compactCount, @firstPrompt, @aiTitle, @cwd, @indexedAt)
      ON CONFLICT(id) DO UPDATE SET
        project_dir   = excluded.project_dir,
        project_label = excluded.project_label,
@@ -63,6 +65,7 @@ export function upsertSession(db: Database.Database, s: Session): void {
        compact_count = excluded.compact_count,
        first_prompt  = excluded.first_prompt,
        ai_title      = excluded.ai_title,
+       cwd           = excluded.cwd,
        indexed_at    = excluded.indexed_at`
   ).run(s);
 }
