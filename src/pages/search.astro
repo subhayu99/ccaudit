@@ -1,0 +1,77 @@
+---
+import Base from "../layouts/Base.astro";
+import { openDb } from "../db/init";
+import { searchMessages } from "../db/messages";
+import { getSession } from "../db/sessions";
+import { INDEX_DB_PATH } from "../paths";
+import { shortSessionId, formatTimestamp } from "../lib/render";
+import type { Session } from "../types";
+
+const query = Astro.url.searchParams.get("q")?.trim() ?? "";
+
+type EnrichedHit = {
+  sessionId: string;
+  lineNo: number;
+  snippet: string;
+  rank: number;
+  session: Session | null;
+};
+
+let hits: EnrichedHit[] = [];
+if (query) {
+  const db = openDb(INDEX_DB_PATH);
+  const raw = searchMessages(db, query, { limit: 50 });
+  hits = raw.map((h) => ({
+    ...h,
+    session: getSession(db, h.sessionId),
+  }));
+  db.close();
+}
+---
+<Base title={query ? `ccaudit — search: ${query}` : "ccaudit — search"}>
+  <h1 class="text-2xl font-bold mb-4">Search</h1>
+
+  <form action="/search" method="get" class="mb-6">
+    <input
+      type="search"
+      name="q"
+      value={query}
+      placeholder="Search all sessions…"
+      autofocus
+      class="w-full max-w-xl px-4 py-2 text-base border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+    />
+  </form>
+
+  {query && hits.length === 0 && (
+    <p class="text-slate-500">No matches for <strong>"{query}"</strong>.</p>
+  )}
+
+  {hits.length > 0 && (
+    <div class="space-y-4">
+      <p class="text-sm text-slate-500">{hits.length} result{hits.length === 1 ? "" : "s"} for <strong>"{query}"</strong></p>
+      {hits.map((h) => (
+        <a href={`/s/${h.sessionId}#line-${h.lineNo}`}
+           class="block bg-white border border-slate-200 rounded-lg p-4 hover:bg-slate-50 transition-colors">
+          <div class="flex items-center gap-2 text-sm text-slate-500 mb-2">
+            <span class="font-mono text-blue-700">{shortSessionId(h.sessionId)}</span>
+            <span>·</span>
+            <span>{h.session?.projectLabel ?? "unknown"}</span>
+            <span>·</span>
+            <span>line {h.lineNo}</span>
+            {h.session?.lastActivity && (
+              <>
+                <span>·</span>
+                <span>{formatTimestamp(h.session.lastActivity)}</span>
+              </>
+            )}
+          </div>
+          <div class="text-sm" set:html={h.snippet}></div>
+        </a>
+      ))}
+    </div>
+  )}
+
+  {!query && (
+    <p class="text-slate-500">Type a query to search across all indexed messages.</p>
+  )}
+</Base>

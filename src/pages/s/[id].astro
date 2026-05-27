@@ -68,20 +68,24 @@ const title = session.aiTitle ?? session.firstPrompt ?? `Session ${shortSessionI
   </div>
 
   <div class="space-y-3">
-    {messages.map((m) => {
-      const kind = classifyMessage(m);
-      if (kind === "compact-summary") return <CompactWaypoint message={m} index={compactIndex.get(m.lineNo) ?? 0} />;
-      if (kind === "sidechain") return <SidechainBlock message={m} />;
-      if (kind === "user-text") return <MessageUser message={m} />;
-      if (kind === "assistant-text") return <MessageAssistant message={m} />;
-      if (kind === "tool-use") return <ToolUseChip message={m} />;
-      if (kind === "tool-result") return <ToolResultChip message={m} />;
-      if (kind === "attachment") return <AttachmentChip message={m} />;
-      return (
-        <div class="p-2 border border-slate-200 rounded bg-slate-50 text-xs text-slate-500 font-mono">
-          line {m.lineNo} · {m.type}
-        </div>
-      );
-    })}
+    {messages.map((m) => (
+      <div id={`line-${m.lineNo}`}>
+        {(() => {
+          const kind = classifyMessage(m);
+          if (kind === "compact-summary") return <CompactWaypoint message={m} index={compactIndex.get(m.lineNo) ?? 0} />;
+          if (kind === "sidechain") return <SidechainBlock message={m} />;
+          if (kind === "user-text") return <MessageUser message={m} />;
+          if (kind === "assistant-text") return <MessageAssistant message={m} />;
+          if (kind === "tool-use") return <ToolUseChip message={m} />;
+          if (kind === "tool-result") return <ToolResultChip message={m} />;
+          if (kind === "attachment") return <AttachmentChip message={m} />;
+          return (
+            <div class="p-2 border border-slate-200 rounded bg-slate-50 text-xs text-slate-500 font-mono">
+              line {m.lineNo} · {m.type}
+            </div>
+          );
+        })()}
+      </div>
+    ))}
   </div>
 </Base>

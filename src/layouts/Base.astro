@@ -26,6 +26,14 @@ const { title = "ccaudit" } = Astro.props;
           <a href="/" class="hover:text-slate-900">Sessions</a>
           <a href="/projects" class="hover:text-slate-900">Projects</a>
         </nav>
+        <form action="/search" method="get" class="flex-1 max-w-md ml-auto">
+          <input
+            type="search"
+            name="q"
+            placeholder="Search all sessions…"
+            class="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
+        </form>
       </div>
     </header>
     <main class="max-w-6xl mx-auto px-4 py-6">
