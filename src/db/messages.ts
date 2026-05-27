@@ -93,3 +93,84 @@ export function searchMessages(
     .all(query, limit) as Array<{ sessionId: string; lineNo: number; snippet: string; rank: number }>;
   return rows;
 }
+
+function highlightExact(text: string, query: string): string {
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.replace(new RegExp(`(${escaped})`, "gi"), "<mark>$1</mark>");
+}
+
+function contextSnippet(text: string, query: string, contextChars = 80): string {
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return text.slice(0, contextChars * 2);
+  const start = Math.max(0, idx - contextChars);
+  const end = Math.min(text.length, idx + query.length + contextChars);
+  const slice = (start > 0 ? "…" : "") + text.slice(start, end) + (end < text.length ? "…" : "");
+  return highlightExact(slice, query);
+}
+
+export function searchMessagesExact(
+  db: Database.Database,
+  query: string,
+  opts: { limit?: number } = {}
+): SearchHit[] {
+  const limit = opts.limit ?? 50;
+  const rows = db
+    .prepare(
+      `SELECT session_id AS sessionId,
+              line_no    AS lineNo,
+              text_content AS text
+         FROM messages
+        WHERE text_content LIKE '%' || ? || '%' COLLATE NOCASE
+        ORDER BY session_id, line_no
+        LIMIT ?`
+    )
+    .all(query, limit) as Array<{ sessionId: string; lineNo: number; text: string }>;
+  return rows.map((r) => ({
+    sessionId: r.sessionId,
+    lineNo: r.lineNo,
+    snippet: contextSnippet(r.text, query),
+    rank: 0,
+  }));
+}
+
+export function searchMessagesRegex(
+  db: Database.Database,
+  pattern: string,
+  opts: { limit?: number } = {}
+): SearchHit[] {
+  const limit = opts.limit ?? 50;
+  let re: RegExp;
+  try {
+    re = new RegExp(pattern, "i");
+  } catch {
+    return [];
+  }
+  // Register the regexp function for this connection
+  db.function("ccaudit_regexp", { deterministic: true }, (pat: unknown, text: unknown) => {
+    if (typeof text !== "string") return 0;
+    try {
+      return new RegExp(pat as string, "i").test(text) ? 1 : 0;
+    } catch {
+      return 0;
+    }
+  });
+  const rows = db
+    .prepare(
+      `SELECT session_id   AS sessionId,
+              line_no      AS lineNo,
+              text_content AS text
+         FROM messages
+        WHERE text_content IS NOT NULL
+          AND ccaudit_regexp(?, text_content) = 1
+        ORDER BY session_id, line_no
+        LIMIT ?`
+    )
+    .all(pattern, limit) as Array<{ sessionId: string; lineNo: number; text: string }>;
+  return rows.map((r) => {
+    const match = r.text.match(re);
+    const snippet = match
+      ? contextSnippet(r.text, match[0])
+      : r.text.slice(0, 160);
+    return { sessionId: r.sessionId, lineNo: r.lineNo, snippet, rank: 0 };
+  });
+}

@@ -1,13 +1,14 @@
 ---
 import Base from "../layouts/Base.astro";
 import { openDb } from "../db/init";
-import { searchMessages } from "../db/messages";
+import { searchMessages, searchMessagesExact, searchMessagesRegex } from "../db/messages";
 import { getSession } from "../db/sessions";
 import { INDEX_DB_PATH } from "../paths";
 import { shortSessionId, formatTimestamp } from "../lib/render";
 import type { Session } from "../types";
 
 const query = Astro.url.searchParams.get("q")?.trim() ?? "";
+const mode = (Astro.url.searchParams.get("mode") ?? "fts") as "fts" | "exact" | "regex";
 
 type EnrichedHit = {
   sessionId: string;
@@ -18,32 +19,86 @@ type EnrichedHit = {
 };
 
 let hits: EnrichedHit[] = [];
+let searchError = "";
+
 if (query) {
   const db = openDb(INDEX_DB_PATH);
-  const raw = searchMessages(db, query, { limit: 50 });
-  hits = raw.map((h) => ({
-    ...h,
-    session: getSession(db, h.sessionId),
-  }));
+  try {
+    const raw =
+      mode === "exact"
+        ? searchMessagesExact(db, query, { limit: 50 })
+        : mode === "regex"
+          ? searchMessagesRegex(db, query, { limit: 50 })
+          : searchMessages(db, query, { limit: 50 });
+    hits = raw.map((h) => ({
+      ...h,
+      session: getSession(db, h.sessionId),
+    }));
+  } catch (e) {
+    searchError = e instanceof Error ? e.message : String(e);
+  }
   db.close();
 }
+
+const modes = [
+  { key: "fts", label: "Smart", desc: "Full-text with stemming & ranking" },
+  { key: "exact", label: "Exact", desc: "Case-insensitive substring match" },
+  { key: "regex", label: "Regex", desc: "Case-insensitive regular expression" },
+] as const;
 ---
 <Base title={query ? `ccaudit — search: ${query}` : "ccaudit — search"}>
   <h1 class="text-2xl font-bold mb-4">Search</h1>
 
-  <form action="/search" method="get" class="mb-6">
-    <input
-      type="search"
-      name="q"
-      value={query}
-      placeholder="Search all sessions…"
-      autofocus
-      class="w-full max-w-xl px-4 py-2 text-base border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-    />
+  <form action="/search" method="get" class="mb-4">
+    <div class="flex gap-2 max-w-xl">
+      <input
+        type="search"
+        name="q"
+        value={query}
+        placeholder="Search all sessions…"
+        autofocus
+        class="flex-1 px-4 py-2 text-base border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+      />
+      <input type="hidden" name="mode" value={mode} />
+      <button type="submit" class="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+        Search
+      </button>
+    </div>
   </form>
 
-  {query && hits.length === 0 && (
-    <p class="text-slate-500">No matches for <strong>"{query}"</strong>.</p>
+  <div class="flex gap-1 mb-6">
+    {modes.map((m) => {
+      const isActive = mode === m.key;
+      const href = query
+        ? `/search?q=${encodeURIComponent(query)}&mode=${m.key}`
+        : `/search?mode=${m.key}`;
+      return (
+        <a
+          href={href}
+          class={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+            isActive
+              ? "bg-blue-600 text-white font-semibold"
+              : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+          }`}
+          title={m.desc}
+        >
+          {m.label}
+        </a>
+      );
+    })}
+    <span class="text-xs text-slate-400 self-center ml-2">
+      {modes.find((m) => m.key === mode)?.desc}
+    </span>
+  </div>
+
+  {searchError && (
+    <div class="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4 mb-4 text-sm">
+      <strong>Search error:</strong> {searchError}
+    </div>
+  )}
+
+  {query && !searchError && hits.length === 0 && (
+    <p class="text-slate-500">No matches for <strong>"{query}"</strong> in {mode} mode.</p>
   )}
 
   {hits.length > 0 && (
