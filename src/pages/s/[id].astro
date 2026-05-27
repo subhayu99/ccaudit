@@ -67,6 +67,59 @@ const title = session.aiTitle ?? session.firstPrompt ?? `Session ${shortSessionI
     <div class="text-xs text-slate-400 mt-1 font-mono">{session.id}</div>
   </div>
 
+  <div class="mb-4 flex gap-3">
+    <button
+      id="resume-btn"
+      class="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+    >
+      Resume this session
+    </button>
+  </div>
+
+  <dialog id="resume-dialog" class="rounded-xl shadow-2xl border border-slate-200 p-0 backdrop:bg-black/40 max-w-lg w-full">
+    <div class="p-6">
+      <h3 class="text-lg font-bold mb-4">Resume this session</h3>
+      <p class="text-sm text-slate-600 mb-3">Run this in a terminal:</p>
+      <pre id="resume-command" class="bg-slate-900 text-green-400 rounded-lg p-4 text-sm font-mono overflow-x-auto whitespace-pre-wrap select-all"></pre>
+      <div class="text-xs text-slate-500 mt-3 space-y-1">
+        <div>Working directory: <span class="font-mono">{session.cwd ?? session.projectDir}</span></div>
+        {session.gitBranch && <div>Branch when last active: <span class="font-mono">{session.gitBranch}</span></div>}
+        <div>Last activity: {formatTimestamp(session.lastActivity)}</div>
+      </div>
+      <div class="flex gap-3 mt-6">
+        <button id="copy-btn" class="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+          Copy command
+        </button>
+        <button id="close-btn" class="px-4 py-2 text-sm font-semibold text-slate-700 bg-slate-200 rounded-lg hover:bg-slate-300 transition-colors">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <script define:vars={{ sessionId: session.id, sessionCwd: session.cwd ?? session.projectDir }}>
+    const dialog = document.getElementById('resume-dialog');
+    const commandEl = document.getElementById('resume-command');
+    const resumeBtn = document.getElementById('resume-btn');
+    const copyBtn = document.getElementById('copy-btn');
+    const closeBtn = document.getElementById('close-btn');
+
+    const command = `cd ${sessionCwd}\nclaude --resume ${sessionId}`;
+    commandEl.textContent = command;
+
+    resumeBtn.addEventListener('click', () => dialog.showModal());
+    closeBtn.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('click', (e) => {
+      if (e.target === dialog) dialog.close();
+    });
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(command).then(() => {
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = 'Copy command'; }, 1500);
+      });
+    });
+  </script>
+
   <div class="space-y-3">
     {messages.map((m) => (
       <div id={`line-${m.lineNo}`}>
