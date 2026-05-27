@@ -7,12 +7,18 @@ import { getIndexStats } from "../db/stats";
 import { formatTimestamp } from "../lib/render";
 import { INDEX_DB_PATH } from "../paths";
 
+const projectFilter = Astro.url.searchParams.get("project") ?? undefined;
+
 const db = openDb(INDEX_DB_PATH);
-const sessions = listSessions(db, { limit: 200 });
+const sessions = listSessions(db, { limit: 200, projectDir: projectFilter });
 const stats = getIndexStats(db);
 db.close();
+
+const pageTitle = projectFilter
+  ? `ccaudit — ${projectFilter.split("/").filter(Boolean).slice(-2).join("/")}`
+  : "ccaudit — sessions";
 ---
-<Base title="ccaudit — sessions">
+<Base title={pageTitle}>
   <div class="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
     <div class="bg-white rounded-lg border border-slate-200 p-4 text-center">
       <div class="text-2xl font-bold text-slate-900">{stats.totalSessions}</div>
@@ -35,7 +41,17 @@ db.close();
       <div class="text-xs text-slate-500 uppercase mt-1">Newest</div>
     </div>
   </div>
-  <h1 class="text-2xl font-bold mb-4">Sessions</h1>
+  {projectFilter ? (
+    <div class="flex items-center gap-3 mb-4">
+      <h1 class="text-2xl font-bold">Sessions</h1>
+      <span class="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded-full">
+        {projectFilter.split("/").filter(Boolean).slice(-2).join("/")}
+      </span>
+      <a href="/" class="text-sm text-slate-500 hover:text-slate-800 hover:underline">× Clear filter</a>
+    </div>
+  ) : (
+    <h1 class="text-2xl font-bold mb-4">Sessions</h1>
+  )}
   {sessions.length === 0 ? (
     <p class="text-slate-500">
       No sessions indexed yet. Run <code class="bg-slate-200 px-1 rounded">ccaudit reindex</code> in a terminal.

@@ -26,9 +26,14 @@ db.close();
         </thead>
         <tbody>
           {projects.map((p) => (
-            <tr class="border-b border-slate-200 hover:bg-slate-100">
+            <tr class="border-b border-slate-200 hover:bg-slate-100 cursor-pointer"
+                onclick={`window.location='/?project=${encodeURIComponent(p.projectDir)}'`}>
               <td class="px-3 py-2 whitespace-nowrap text-slate-600">{formatTimestamp(p.lastActivity)}</td>
-              <td class="px-3 py-2 font-semibold">{p.projectLabel}</td>
+              <td class="px-3 py-2 font-semibold">
+                <a href={`/?project=${encodeURIComponent(p.projectDir)}`} class="text-blue-700 hover:underline">
+                  {p.projectLabel}
+                </a>
+              </td>
               <td class="px-3 py-2 text-right tabular-nums">{p.sessionCount}</td>
               <td class="px-3 py-2 text-slate-500 font-mono text-xs">{p.projectDir}</td>
             </tr>
