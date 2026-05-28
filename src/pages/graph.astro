@@ -1,0 +1,231 @@
+---
+import Base from "../layouts/Base.astro";
+import { openDb } from "../db/init";
+import { getGraphData } from "../db/graph";
+import { INDEX_DB_PATH } from "../paths";
+
+const db = openDb(INDEX_DB_PATH);
+const graph = getGraphData(db);
+db.close();
+
+const projectCount = graph.nodes.filter((n) => n.type === "project").length;
+const sessionCount = graph.nodes.filter((n) => n.type === "session").length;
+
+// Escape `<` so the JSON can't break out of the <script> tag.
+const graphJson = JSON.stringify(graph).replace(/</g, "\\u003c");
+---
+<Base title="ccaudit — graph">
+  <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+    <h1 class="text-2xl font-bold">Graph</h1>
+    <div class="flex items-center gap-4 text-sm text-slate-500">
+      <span class="flex items-center gap-1.5">
+        <span class="inline-block w-3 h-3 rounded-full bg-violet-500"></span> {projectCount} projects
+      </span>
+      <span class="flex items-center gap-1.5">
+        <span class="inline-block w-3 h-3 rounded-full bg-blue-500"></span> {sessionCount} sessions
+      </span>
+      <span class="flex items-center gap-1.5">
+        <span class="inline-block w-3 h-3 rounded-full bg-amber-500"></span> compacted
+      </span>
+      <span class="hidden sm:inline text-slate-400">drag · scroll to zoom · click to open</span>
+    </div>
+  </div>
+
+  <div
+    id="graph-container"
+    class="relative bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden"
+    style="height: 78vh;"
+  >
+    <svg id="graph-svg" width="100%" height="100%" style="display:block;"></svg>
+    <div
+      id="graph-tooltip"
+      class="pointer-events-none absolute hidden px-2 py-1 text-xs rounded-md bg-slate-900 text-slate-100 shadow-lg max-w-xs z-10"
+    ></div>
+    <button
+      id="graph-reset"
+      class="absolute bottom-3 right-3 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors"
+    >
+      Reset view
+    </button>
+  </div>
+
+  <script type="application/json" id="graph-data" set:html={graphJson}></script>
+
+  <script>
+    // @ts-nocheck — client-side d3 viz glue; types relaxed for brevity.
+    import { forceSimulation, forceManyBody, forceLink, forceCenter, forceCollide, forceX, forceY } from "d3-force";
+    import { select } from "d3-selection";
+    import { zoom, zoomIdentity } from "d3-zoom";
+    import { drag } from "d3-drag";
+
+    const data = JSON.parse(document.getElementById("graph-data").textContent);
+    const container = document.getElementById("graph-container");
+    const svgEl = document.getElementById("graph-svg");
+    const tooltip = document.getElementById("graph-tooltip");
+
+    let width = container.clientWidth;
+    let height = container.clientHeight;
+
+    const isDark = document.documentElement.classList.contains("dark");
+    const C = isDark
+      ? { proj: "#a78bfa", sess: "#60a5fa", sessCompact: "#fbbf24", edge: "#334155", label: "#cbd5e1", stroke: "#0f172a" }
+      : { proj: "#7c3aed", sess: "#2563eb", sessCompact: "#d97706", edge: "#cbd5e1", label: "#475569", stroke: "#ffffff" };
+
+    const projRadius = (d) => Math.max(6, Math.sqrt(d.sessionCount || 1) * 4);
+    const sessRadius = (d) => Math.max(3, Math.sqrt(d.messageCount || 1) * 0.55);
+    const nodeRadius = (d) => (d.type === "project" ? projRadius(d) : sessRadius(d));
+
+    const svg = select(svgEl);
+    const root = svg.append("g");
+
+    const zoomBehavior = zoom()
+      .scaleExtent([0.08, 8])
+      .on("zoom", (event) => root.attr("transform", event.transform));
+    svg.call(zoomBehavior);
+
+    // Links
+    const link = root
+      .append("g")
+      .attr("stroke", C.edge)
+      .attr("stroke-opacity", 0.45)
+      .selectAll("line")
+      .data(data.links)
+      .join("line")
+      .attr("stroke-width", 1);
+
+    // Nodes
+    const node = root
+      .append("g")
+      .selectAll("g")
+      .data(data.nodes)
+      .join("g")
+      .style("cursor", "pointer");
+
+    node
+      .append("circle")
+      .attr("r", nodeRadius)
+      .attr("fill", (d) => (d.type === "project" ? C.proj : d.compactCount > 0 ? C.sessCompact : C.sess))
+      .attr("stroke", C.stroke)
+      .attr("stroke-width", 1.5);
+
+    // Project labels always visible; session labels only on hover.
+    const label = node
+      .append("text")
+      .text((d) => (d.type === "project" ? d.label : ""))
+      .attr("font-size", (d) => (d.type === "project" ? 11 : 9))
+      .attr("font-weight", (d) => (d.type === "project" ? 600 : 400))
+      .attr("fill", C.label)
+      .attr("dx", (d) => nodeRadius(d) + 4)
+      .attr("dy", 3)
+      .style("pointer-events", "none")
+      .style("paint-order", "stroke")
+      .attr("stroke", C.stroke)
+      .attr("stroke-width", 3)
+      .attr("stroke-opacity", 0.7);
+
+    // Neighbor lookup for hover highlighting
+    const linkedByIndex = new Set();
+    data.links.forEach((l) => linkedByIndex.add(l.source + "|" + l.target));
+    function connected(a, b) {
+      return a.id === b.id || linkedByIndex.has(a.id + "|" + b.id) || linkedByIndex.has(b.id + "|" + a.id);
+    }
+
+    function truncate(s, n) {
+      return s && s.length > n ? s.slice(0, n - 1) + "…" : s || "";
+    }
+
+    node
+      .on("mouseover", function (event, d) {
+        node.style("opacity", (o) => (connected(d, o) ? 1 : 0.12));
+        link.style("stroke-opacity", (l) => (l.source.id === d.id || l.target.id === d.id ? 0.85 : 0.04));
+        // Reveal session label for the hovered node
+        if (d.type === "session") {
+          select(this).select("text").text(truncate(d.label, 40)).attr("font-weight", 600);
+        } else {
+          select(this).select("text").attr("font-weight", 700);
+        }
+        // Tooltip
+        const meta =
+          d.type === "project"
+            ? `${d.sessionCount} session${d.sessionCount === 1 ? "" : "s"}`
+            : `${d.messageCount} msgs${d.compactCount > 0 ? ` · ${d.compactCount} compact` : ""}`;
+        tooltip.innerHTML = `<div class="font-semibold">${truncate(d.label, 80)}</div><div class="text-slate-400">${meta}</div>`;
+        tooltip.classList.remove("hidden");
+      })
+      .on("mousemove", function (event) {
+        const rect = container.getBoundingClientRect();
+        tooltip.style.left = event.clientX - rect.left + 12 + "px";
+        tooltip.style.top = event.clientY - rect.top + 12 + "px";
+      })
+      .on("mouseout", function (event, d) {
+        node.style("opacity", 1);
+        link.style("stroke-opacity", 0.45);
+        select(this)
+          .select("text")
+          .text(d.type === "project" ? d.label : "")
+          .attr("font-weight", d.type === "project" ? 600 : 400);
+        tooltip.classList.add("hidden");
+      })
+      .on("click", (event, d) => {
+        if (event.defaultPrevented) return; // suppress click after drag
+        if (d.type === "session") {
+          window.location.href = "/s/" + d.sessionId;
+        } else {
+          window.location.href = "/?project=" + encodeURIComponent(d.projectDir);
+        }
+      });
+
+    // Force simulation
+    const sim = forceSimulation(data.nodes)
+      .force("link", forceLink(data.links).id((d) => d.id).distance(35).strength(0.5))
+      .force("charge", forceManyBody().strength((d) => (d.type === "project" ? -180 : -40)))
+      .force("center", forceCenter(width / 2, height / 2))
+      .force("x", forceX(width / 2).strength(0.04))
+      .force("y", forceY(height / 2).strength(0.04))
+      .force("collide", forceCollide().radius((d) => nodeRadius(d) + 3))
+      .on("tick", ticked);
+
+    function ticked() {
+      link
+        .attr("x1", (d) => d.source.x)
+        .attr("y1", (d) => d.source.y)
+        .attr("x2", (d) => d.target.x)
+        .attr("y2", (d) => d.target.y);
+      node.attr("transform", (d) => `translate(${d.x},${d.y})`);
+    }
+
+    // Drag
+    node.call(
+      drag()
+        .on("start", (event, d) => {
+          if (!event.active) sim.alphaTarget(0.3).restart();
+          d.fx = d.x;
+          d.fy = d.y;
+        })
+        .on("drag", (event, d) => {
+          d.fx = event.x;
+          d.fy = event.y;
+        })
+        .on("end", (event, d) => {
+          if (!event.active) sim.alphaTarget(0);
+          d.fx = null;
+          d.fy = null;
+        })
+    );
+
+    // Reset view button
+    document.getElementById("graph-reset").addEventListener("click", () => {
+      svg.transition().duration(400).call(zoomBehavior.transform, zoomIdentity);
+    });
+
+    // Handle container resize
+    window.addEventListener("resize", () => {
+      width = container.clientWidth;
+      height = container.clientHeight;
+      sim.force("center", forceCenter(width / 2, height / 2));
+      sim.force("x", forceX(width / 2).strength(0.04));
+      sim.force("y", forceY(height / 2).strength(0.04));
+      sim.alpha(0.3).restart();
+    });
+  </script>
+</Base>

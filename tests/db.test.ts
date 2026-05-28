@@ -13,6 +13,7 @@ import {
 } from "../src/db/messages.js";
 import type { MessageRow } from "../src/types.js";
 import { addTag, removeTag, getSessionTags, getSessionsByTag } from "../src/db/tags.js";
+import { getGraphData } from "../src/db/graph.js";
 import { getIndexStats } from "../src/db/stats.js";
 
 describe("db/init", () => {
@@ -296,5 +297,62 @@ describe("db/stats", () => {
     expect(stats.sessionsWithCompacts).toBe(2);
     expect(stats.oldestSession).toBe(500);
     expect(stats.newestSession).toBe(3000);
+  });
+});
+
+describe("db/graph", () => {
+  let tmp: string;
+  let db: ReturnType<typeof openDb>;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "ccaudit-test-"));
+    db = openDb(join(tmp, "test.db"));
+  });
+  afterEach(() => {
+    db.close();
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  const s = (id: string, projectDir: string, projectLabel: string): Session => ({
+    id, projectDir, projectLabel, filePath: `/p/${id}.jsonl`,
+    fileMtime: 0, fileSize: 0, startedAt: 0, lastActivity: 0,
+    gitBranch: null, messageCount: 10, userMsgCount: 0, compactCount: 0,
+    firstPrompt: "hello world", aiTitle: null, cwd: null, indexedAt: 0,
+  });
+
+  it("builds project hubs + session nodes with session->project links", () => {
+    upsertSession(db, s("a", "/p1", "p1"));
+    upsertSession(db, s("b", "/p1", "p1"));
+    upsertSession(db, s("c", "/p2", "p2"));
+
+    const g = getGraphData(db);
+    const projectNodes = g.nodes.filter((n) => n.type === "project");
+    const sessionNodes = g.nodes.filter((n) => n.type === "session");
+
+    expect(projectNodes).toHaveLength(2);
+    expect(sessionNodes).toHaveLength(3);
+    expect(g.links).toHaveLength(3);
+
+    // p1 project node has sessionCount 2
+    const p1 = projectNodes.find((n) => n.projectDir === "/p1");
+    expect(p1!.sessionCount).toBe(2);
+
+    // every link points from a session to its project
+    for (const link of g.links) {
+      expect(link.source.startsWith("sess:")).toBe(true);
+      expect(link.target.startsWith("proj:")).toBe(true);
+    }
+
+    // session 'a' links to proj /p1
+    const aLink = g.links.find((l) => l.source === "sess:a");
+    expect(aLink!.target).toBe("proj:/p1");
+  });
+
+  it("uses ai_title or first_prompt as session label, falling back to id prefix", () => {
+    const withTitle = { ...s("x", "/p", "p"), aiTitle: "My Title" };
+    upsertSession(db, withTitle);
+    const g = getGraphData(db);
+    const node = g.nodes.find((n) => n.sessionId === "x");
+    expect(node!.label).toBe("My Title");
   });
 });
