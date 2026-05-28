@@ -8,6 +8,7 @@ const db = openDb(INDEX_DB_PATH);
 const graph = getGraphData(db);
 db.close();
 
+const folderCount = graph.nodes.filter((n) => n.type === "folder").length;
 const projectCount = graph.nodes.filter((n) => n.type === "project").length;
 const sessionCount = graph.nodes.filter((n) => n.type === "session").length;
 
@@ -15,9 +16,12 @@ const sessionCount = graph.nodes.filter((n) => n.type === "session").length;
 const graphJson = JSON.stringify(graph).replace(/</g, "\\u003c");
 ---
 <Base title="ccaudit — graph">
-  <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+  <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
     <h1 class="text-2xl font-bold">Graph</h1>
     <div class="flex items-center gap-4 text-sm text-slate-500">
+      <span class="flex items-center gap-1.5">
+        <span class="inline-block w-3 h-3 rounded-full bg-slate-400"></span> {folderCount} folders
+      </span>
       <span class="flex items-center gap-1.5">
         <span class="inline-block w-3 h-3 rounded-full bg-violet-500"></span> {projectCount} projects
       </span>
@@ -27,14 +31,27 @@ const graphJson = JSON.stringify(graph).replace(/</g, "\\u003c");
       <span class="flex items-center gap-1.5">
         <span class="inline-block w-3 h-3 rounded-full bg-amber-500"></span> compacted
       </span>
-      <span class="hidden sm:inline text-slate-400">drag · scroll to zoom · click to open</span>
     </div>
+  </div>
+
+  <div class="flex items-center gap-3 mb-3 flex-wrap">
+    <input
+      id="graph-search"
+      type="search"
+      placeholder="Highlight nodes…"
+      class="px-3 py-1.5 text-sm border border-slate-300 rounded-lg bg-white dark:bg-slate-800 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
+    />
+    <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+      <input id="graph-continuations" type="checkbox" class="rounded" />
+      Show session threads
+    </label>
+    <span class="text-slate-400 text-sm ml-auto hidden sm:inline">drag · scroll to zoom · click to open</span>
   </div>
 
   <div
     id="graph-container"
     class="relative bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden"
-    style="height: 78vh;"
+    style="height: 74vh;"
   >
     <svg id="graph-svg" width="100%" height="100%" style="display:block;"></svg>
     <div
@@ -68,30 +85,52 @@ const graphJson = JSON.stringify(graph).replace(/</g, "\\u003c");
 
     const isDark = document.documentElement.classList.contains("dark");
     const C = isDark
-      ? { proj: "#a78bfa", sess: "#60a5fa", sessCompact: "#fbbf24", edge: "#334155", label: "#cbd5e1", stroke: "#0f172a" }
-      : { proj: "#7c3aed", sess: "#2563eb", sessCompact: "#d97706", edge: "#cbd5e1", label: "#475569", stroke: "#ffffff" };
+      ? { folder: "#64748b", proj: "#a78bfa", sess: "#60a5fa", sessCompact: "#fbbf24", edge: "#334155", cont: "#34d399", label: "#cbd5e1", folderLabel: "#94a3b8", stroke: "#0f172a" }
+      : { folder: "#94a3b8", proj: "#7c3aed", sess: "#2563eb", sessCompact: "#d97706", edge: "#cbd5e1", cont: "#059669", label: "#475569", folderLabel: "#64748b", stroke: "#ffffff" };
 
+    // Split links: structural ones drive the layout; continuation ones are overlay-only.
+    const structuralLinks = data.links.filter((l) => l.kind !== "continuation");
+    const continuationLinks = data.links.filter((l) => l.kind === "continuation");
+
+    const folderRadius = (d) => Math.max(8, Math.sqrt(d.projectCount || 1) * 6);
     const projRadius = (d) => Math.max(6, Math.sqrt(d.sessionCount || 1) * 4);
     const sessRadius = (d) => Math.max(3, Math.sqrt(d.messageCount || 1) * 0.55);
-    const nodeRadius = (d) => (d.type === "project" ? projRadius(d) : sessRadius(d));
+    const nodeRadius = (d) =>
+      d.type === "folder" ? folderRadius(d) : d.type === "project" ? projRadius(d) : sessRadius(d);
+    const nodeFill = (d) =>
+      d.type === "folder" ? C.folder : d.type === "project" ? C.proj : d.compactCount > 0 ? C.sessCompact : C.sess;
 
     const svg = select(svgEl);
     const root = svg.append("g");
 
     const zoomBehavior = zoom()
-      .scaleExtent([0.08, 8])
+      .scaleExtent([0.05, 8])
       .on("zoom", (event) => root.attr("transform", event.transform));
     svg.call(zoomBehavior);
 
-    // Links
+    // Continuation edges (overlay, hidden by default) — rendered first so they sit behind.
+    // Keep a reference to the GROUP so the toggle flips its display, not each line's.
+    const contGroup = root
+      .append("g")
+      .attr("stroke", C.cont)
+      .attr("stroke-opacity", 0.55)
+      .attr("stroke-dasharray", "4 3")
+      .style("display", "none");
+    const contLink = contGroup
+      .selectAll("line")
+      .data(continuationLinks)
+      .join("line")
+      .attr("stroke-width", 1.2);
+
+    // Structural edges
     const link = root
       .append("g")
       .attr("stroke", C.edge)
       .attr("stroke-opacity", 0.45)
       .selectAll("line")
-      .data(data.links)
+      .data(structuralLinks)
       .join("line")
-      .attr("stroke-width", 1);
+      .attr("stroke-width", (d) => (d.kind === "project-folder" ? 1.4 : 1));
 
     // Nodes
     const node = root
@@ -104,17 +143,18 @@ const graphJson = JSON.stringify(graph).replace(/</g, "\\u003c");
     node
       .append("circle")
       .attr("r", nodeRadius)
-      .attr("fill", (d) => (d.type === "project" ? C.proj : d.compactCount > 0 ? C.sessCompact : C.sess))
+      .attr("fill", nodeFill)
+      .attr("fill-opacity", (d) => (d.type === "folder" ? 0.55 : 1))
       .attr("stroke", C.stroke)
       .attr("stroke-width", 1.5);
 
-    // Project labels always visible; session labels only on hover.
+    // Folder + project labels always visible; session labels only on hover.
     const label = node
       .append("text")
-      .text((d) => (d.type === "project" ? d.label : ""))
-      .attr("font-size", (d) => (d.type === "project" ? 11 : 9))
-      .attr("font-weight", (d) => (d.type === "project" ? 600 : 400))
-      .attr("fill", C.label)
+      .text((d) => (d.type === "session" ? "" : d.label))
+      .attr("font-size", (d) => (d.type === "folder" ? 12 : d.type === "project" ? 11 : 9))
+      .attr("font-weight", (d) => (d.type === "session" ? 400 : 600))
+      .attr("fill", (d) => (d.type === "folder" ? C.folderLabel : C.label))
       .attr("dx", (d) => nodeRadius(d) + 4)
       .attr("dy", 3)
       .style("pointer-events", "none")
@@ -123,9 +163,9 @@ const graphJson = JSON.stringify(graph).replace(/</g, "\\u003c");
       .attr("stroke-width", 3)
       .attr("stroke-opacity", 0.7);
 
-    // Neighbor lookup for hover highlighting
+    // Neighbor lookup for hover highlighting (structural links only)
     const linkedByIndex = new Set();
-    data.links.forEach((l) => linkedByIndex.add(l.source + "|" + l.target));
+    structuralLinks.forEach((l) => linkedByIndex.add(l.source + "|" + l.target));
     function connected(a, b) {
       return a.id === b.id || linkedByIndex.has(a.id + "|" + b.id) || linkedByIndex.has(b.id + "|" + a.id);
     }
@@ -138,17 +178,17 @@ const graphJson = JSON.stringify(graph).replace(/</g, "\\u003c");
       .on("mouseover", function (event, d) {
         node.style("opacity", (o) => (connected(d, o) ? 1 : 0.12));
         link.style("stroke-opacity", (l) => (l.source.id === d.id || l.target.id === d.id ? 0.85 : 0.04));
-        // Reveal session label for the hovered node
         if (d.type === "session") {
           select(this).select("text").text(truncate(d.label, 40)).attr("font-weight", 600);
         } else {
           select(this).select("text").attr("font-weight", 700);
         }
-        // Tooltip
         const meta =
-          d.type === "project"
-            ? `${d.sessionCount} session${d.sessionCount === 1 ? "" : "s"}`
-            : `${d.messageCount} msgs${d.compactCount > 0 ? ` · ${d.compactCount} compact` : ""}`;
+          d.type === "folder"
+            ? `${d.projectCount} projects`
+            : d.type === "project"
+              ? `${d.sessionCount} session${d.sessionCount === 1 ? "" : "s"}`
+              : `${d.messageCount} msgs${d.compactCount > 0 ? ` · ${d.compactCount} compact` : ""}`;
         tooltip.innerHTML = `<div class="font-semibold">${truncate(d.label, 80)}</div><div class="text-slate-400">${meta}</div>`;
         tooltip.classList.remove("hidden");
       })
@@ -162,26 +202,25 @@ const graphJson = JSON.stringify(graph).replace(/</g, "\\u003c");
         link.style("stroke-opacity", 0.45);
         select(this)
           .select("text")
-          .text(d.type === "project" ? d.label : "")
-          .attr("font-weight", d.type === "project" ? 600 : 400);
+          .text(d.type === "session" ? "" : d.label)
+          .attr("font-weight", d.type === "session" ? 400 : 600);
         tooltip.classList.add("hidden");
       })
       .on("click", (event, d) => {
-        if (event.defaultPrevented) return; // suppress click after drag
-        if (d.type === "session") {
-          window.location.href = "/s/" + d.sessionId;
-        } else {
-          window.location.href = "/?project=" + encodeURIComponent(d.projectDir);
-        }
+        if (event.defaultPrevented) return;
+        if (d.type === "session") window.location.href = "/s/" + d.sessionId;
+        else if (d.type === "project") window.location.href = "/?project=" + encodeURIComponent(d.projectDir);
+        // folder click: no-op (it's a visual grouping)
       });
 
-    // Force simulation
+    // Force simulation — only structural links drive layout.
+    const charge = (d) => (d.type === "folder" ? -400 : d.type === "project" ? -160 : -36);
     const sim = forceSimulation(data.nodes)
-      .force("link", forceLink(data.links).id((d) => d.id).distance(35).strength(0.5))
-      .force("charge", forceManyBody().strength((d) => (d.type === "project" ? -180 : -40)))
+      .force("link", forceLink(structuralLinks).id((d) => d.id).distance((l) => (l.kind === "project-folder" ? 70 : 32)).strength(0.5))
+      .force("charge", forceManyBody().strength(charge))
       .force("center", forceCenter(width / 2, height / 2))
-      .force("x", forceX(width / 2).strength(0.04))
-      .force("y", forceY(height / 2).strength(0.04))
+      .force("x", forceX(width / 2).strength(0.03))
+      .force("y", forceY(height / 2).strength(0.03))
       .force("collide", forceCollide().radius((d) => nodeRadius(d) + 3))
       .on("tick", ticked);
 
@@ -191,8 +230,21 @@ const graphJson = JSON.stringify(graph).replace(/</g, "\\u003c");
         .attr("y1", (d) => d.source.y)
         .attr("x2", (d) => d.target.x)
         .attr("y2", (d) => d.target.y);
+      contLink
+        .attr("x1", (d) => d.source.x)
+        .attr("y1", (d) => d.source.y)
+        .attr("x2", (d) => d.target.x)
+        .attr("y2", (d) => d.target.y);
       node.attr("transform", (d) => `translate(${d.x},${d.y})`);
     }
+
+    // Resolve continuation link endpoints to node objects (forceLink does this for
+    // structural links, but continuation links aren't in the simulation).
+    const nodeById = new Map(data.nodes.map((n) => [n.id, n]));
+    continuationLinks.forEach((l) => {
+      if (typeof l.source === "string") l.source = nodeById.get(l.source);
+      if (typeof l.target === "string") l.target = nodeById.get(l.target);
+    });
 
     // Drag
     node.call(
@@ -213,18 +265,42 @@ const graphJson = JSON.stringify(graph).replace(/</g, "\\u003c");
         })
     );
 
-    // Reset view button
+    // Continuation toggle — flips the whole overlay group's visibility.
+    document.getElementById("graph-continuations").addEventListener("change", (e) => {
+      contGroup.style("display", e.target.checked ? null : "none");
+    });
+
+    // In-graph search: highlight matching node labels, dim the rest.
+    const searchInput = document.getElementById("graph-search");
+    searchInput.addEventListener("input", () => {
+      const q = searchInput.value.trim().toLowerCase();
+      if (!q) {
+        node.style("opacity", 1);
+        link.style("stroke-opacity", 0.45);
+        label.text((d) => (d.type === "session" ? "" : d.label));
+        return;
+      }
+      node.style("opacity", (d) => (d.label.toLowerCase().includes(q) ? 1 : 0.1));
+      link.style("stroke-opacity", 0.05);
+      // Reveal labels of matching session nodes too
+      label.text((d) => {
+        if (d.type !== "session") return d.label;
+        return d.label.toLowerCase().includes(q) ? truncate(d.label, 40) : "";
+      });
+    });
+
+    // Reset view
     document.getElementById("graph-reset").addEventListener("click", () => {
       svg.transition().duration(400).call(zoomBehavior.transform, zoomIdentity);
     });
 
-    // Handle container resize
+    // Resize
     window.addEventListener("resize", () => {
       width = container.clientWidth;
       height = container.clientHeight;
       sim.force("center", forceCenter(width / 2, height / 2));
-      sim.force("x", forceX(width / 2).strength(0.04));
-      sim.force("y", forceY(height / 2).strength(0.04));
+      sim.force("x", forceX(width / 2).strength(0.03));
+      sim.force("y", forceY(height / 2).strength(0.03));
       sim.alpha(0.3).restart();
     });
   </script>

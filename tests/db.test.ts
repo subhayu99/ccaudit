@@ -328,24 +328,58 @@ describe("db/graph", () => {
     const g = getGraphData(db);
     const projectNodes = g.nodes.filter((n) => n.type === "project");
     const sessionNodes = g.nodes.filter((n) => n.type === "session");
+    const spLinks = g.links.filter((l) => l.kind === "session-project");
 
     expect(projectNodes).toHaveLength(2);
     expect(sessionNodes).toHaveLength(3);
-    expect(g.links).toHaveLength(3);
+    expect(spLinks).toHaveLength(3);
 
     // p1 project node has sessionCount 2
     const p1 = projectNodes.find((n) => n.projectDir === "/p1");
     expect(p1!.sessionCount).toBe(2);
 
-    // every link points from a session to its project
-    for (const link of g.links) {
+    // every session-project link points from a session to its project
+    for (const link of spLinks) {
       expect(link.source.startsWith("sess:")).toBe(true);
       expect(link.target.startsWith("proj:")).toBe(true);
     }
 
     // session 'a' links to proj /p1
-    const aLink = g.links.find((l) => l.source === "sess:a");
+    const aLink = spLinks.find((l) => l.source === "sess:a");
     expect(aLink!.target).toBe("proj:/p1");
+  });
+
+  it("creates folder nodes only for parents shared by >=2 projects", () => {
+    // Two projects under the same parent /work/repo -> one folder node
+    upsertSession(db, s("a", "/work/repo/alpha", "repo/alpha"));
+    upsertSession(db, s("b", "/work/repo/beta", "repo/beta"));
+    // A project with a unique parent -> no folder node
+    upsertSession(db, s("c", "/solo/only", "solo/only"));
+
+    const g = getGraphData(db);
+    const folderNodes = g.nodes.filter((n) => n.type === "folder");
+    expect(folderNodes).toHaveLength(1);
+    expect(folderNodes[0]!.folderPath).toBe("/work/repo");
+    expect(folderNodes[0]!.projectCount).toBe(2);
+
+    // project-folder links connect the two repo projects to the folder
+    const pfLinks = g.links.filter((l) => l.kind === "project-folder");
+    expect(pfLinks).toHaveLength(2);
+    expect(pfLinks.every((l) => l.target === "folder:/work/repo")).toBe(true);
+  });
+
+  it("creates continuation links between consecutive sessions in a project, by time", () => {
+    upsertSession(db, { ...s("first", "/p", "p"), startedAt: 100 });
+    upsertSession(db, { ...s("second", "/p", "p"), startedAt: 200 });
+    upsertSession(db, { ...s("third", "/p", "p"), startedAt: 300 });
+    // a lone session in another project -> no continuation
+    upsertSession(db, { ...s("lone", "/q", "q"), startedAt: 50 });
+
+    const g = getGraphData(db);
+    const contLinks = g.links.filter((l) => l.kind === "continuation");
+    expect(contLinks).toHaveLength(2); // first->second, second->third
+    expect(contLinks[0]).toEqual({ source: "sess:first", target: "sess:second", kind: "continuation" });
+    expect(contLinks[1]).toEqual({ source: "sess:second", target: "sess:third", kind: "continuation" });
   });
 
   it("uses ai_title or first_prompt as session label, falling back to id prefix", () => {
