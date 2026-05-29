@@ -1,0 +1,46 @@
+/**
+ * Strip Conductor-injected boilerplate from the *start* of a user message so
+ * the real prompt becomes the session title / timeline content.
+ *
+ * Conductor prepends one or more instruction blocks to the first user message:
+ *
+ *   <system_instruction> You are working inside Conductor... </system_instruction>
+ *   <system-instruction> To do immediately: rename the branch... </system-instruction>
+ *   /tmp/attachments/pasted_text_....txt
+ *   <the actual user ask>
+ *
+ * We only remove blocks that are *anchored at the start* and have a matching
+ * close tag, so a genuine mid-conversation mention of `<system_instruction>`
+ * (e.g. a chat discussing this very behavior) is never touched. The raw line
+ * is always preserved in `raw_json`.
+ */
+
+// A leading <system_instruction>…</system_instruction> or the hyphen variant.
+// The backreference \1 forces the close tag to match the open tag exactly.
+const LEADING_INSTRUCTION_BLOCK = /^\s*<(system[_-]instruction)\s*>[\s\S]*?<\/\1\s*>/i;
+
+// A leading line that is solely a Conductor attachment path.
+const LEADING_ATTACHMENT_PATH = /^\s*\/tmp\/attachments\/\S+[ \t]*\r?\n?/;
+
+// claude-mem observer sessions: every user message is a wrapper around the
+// primary session's real request. Anchored at the start so a normal sentence
+// mentioning "observe" is never matched.
+const OBSERVER_SIGNATURE = /^\s*(Hello memory agent,\s*you are continuing to observe|<observed_from_primary_session>)/i;
+const USER_REQUEST = /<user_request>([\s\S]*?)<\/user_request>/i;
+
+export function cleanPromptText(text: string): string {
+  // Observer boilerplate → surface the observed <user_request> (or nothing).
+  if (OBSERVER_SIGNATURE.test(text)) {
+    const m = text.match(USER_REQUEST);
+    return m && m[1]!.trim() ? m[1]!.replace(/\s+/g, " ").trim() : "";
+  }
+
+  let s = text;
+  let prev: string;
+  do {
+    prev = s;
+    s = s.replace(LEADING_INSTRUCTION_BLOCK, "");
+    s = s.replace(LEADING_ATTACHMENT_PATH, "");
+  } while (s !== prev);
+  return s.trim();
+}
