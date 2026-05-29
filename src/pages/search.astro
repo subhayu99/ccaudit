@@ -1,8 +1,10 @@
 ---
-import Base from "../layouts/Base.astro";
+import AppShell from "../layouts/AppShell.astro";
+import Sidebar from "../components/Sidebar.astro";
 import { openDb } from "../db/init";
 import { searchMessages, searchMessagesExact, searchMessagesRegex } from "../db/messages";
 import { getSession } from "../db/sessions";
+import { getLibraryTree } from "../db/library";
 import { INDEX_DB_PATH } from "../paths";
 import { shortSessionId, formatTimestamp } from "../lib/render";
 import type { Session } from "../types";
@@ -10,35 +12,24 @@ import type { Session } from "../types";
 const query = Astro.url.searchParams.get("q")?.trim() ?? "";
 const mode = (Astro.url.searchParams.get("mode") ?? "fts") as "fts" | "exact" | "regex";
 
-type EnrichedHit = {
-  sessionId: string;
-  lineNo: number;
-  snippet: string;
-  rank: number;
-  session: Session | null;
-};
-
+type EnrichedHit = { sessionId: string; lineNo: number; snippet: string; rank: number; session: Session | null };
 let hits: EnrichedHit[] = [];
 let searchError = "";
 
+const db = openDb(INDEX_DB_PATH);
+const tree = getLibraryTree(db);
 if (query) {
-  const db = openDb(INDEX_DB_PATH);
   try {
     const raw =
-      mode === "exact"
-        ? searchMessagesExact(db, query, { limit: 50 })
-        : mode === "regex"
-          ? searchMessagesRegex(db, query, { limit: 50 })
-          : searchMessages(db, query, { limit: 50 });
-    hits = raw.map((h) => ({
-      ...h,
-      session: getSession(db, h.sessionId),
-    }));
+      mode === "exact" ? searchMessagesExact(db, query, { limit: 50 })
+      : mode === "regex" ? searchMessagesRegex(db, query, { limit: 50 })
+      : searchMessages(db, query, { limit: 50 });
+    hits = raw.map((h) => ({ ...h, session: getSession(db, h.sessionId) }));
   } catch (e) {
     searchError = e instanceof Error ? e.message : String(e);
   }
-  db.close();
 }
+db.close();
 
 const modes = [
   { key: "fts", label: "Smart", desc: "Full-text with stemming & ranking" },
@@ -46,87 +37,62 @@ const modes = [
   { key: "regex", label: "Regex", desc: "Case-insensitive regular expression" },
 ] as const;
 ---
-<Base title={query ? `ccaudit — search: ${query}` : "ccaudit — search"}>
-  <h1 class="text-2xl font-bold mb-4">Search</h1>
+<AppShell title={query ? `ccaudit — search: ${query}` : "ccaudit — search"}>
+  <Sidebar slot="sidebar" tree={tree} />
+  <div slot="reader" class="p-8 max-w-[900px]">
+    <h1 class="font-serif text-2xl font-semibold mb-4" style="color:var(--text);">Search</h1>
 
-  <form action="/search" method="get" class="mb-4">
-    <div class="flex gap-2 max-w-xl">
-      <input
-        type="search"
-        name="q"
-        value={query}
-        placeholder="Search all sessions…"
-        autofocus
-        class="flex-1 px-4 py-2 text-base border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-      />
-      <input type="hidden" name="mode" value={mode} />
-      <button type="submit" class="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
-        Search
-      </button>
+    <form action="/search" method="get" class="mb-4">
+      <div class="flex gap-2 max-w-xl">
+        <input type="search" name="q" value={query} placeholder="Search all sessions…" autofocus
+          class="flex-1 px-4 py-2 text-base rounded-lg focus:outline-none"
+          style="background:var(--panel); border:1px solid var(--border); color:var(--text);" />
+        <input type="hidden" name="mode" value={mode} />
+        <button type="submit" class="px-4 py-2 text-sm font-semibold rounded-lg" style="background:var(--amber); color:#241f17;">Search</button>
+      </div>
+    </form>
+
+    <div class="flex gap-1.5 mb-6 items-center flex-wrap">
+      {modes.map((m) => {
+        const href = query ? `/search?q=${encodeURIComponent(query)}&mode=${m.key}` : `/search?mode=${m.key}`;
+        return <a href={href} class="smode" data-on={mode === m.key} title={m.desc}>{m.label}</a>;
+      })}
+      <span class="text-xs ml-2" style="color:var(--text-faint);">{modes.find((m) => m.key === mode)?.desc}</span>
     </div>
-  </form>
 
-  <div class="flex gap-1 mb-6">
-    {modes.map((m) => {
-      const isActive = mode === m.key;
-      const href = query
-        ? `/search?q=${encodeURIComponent(query)}&mode=${m.key}`
-        : `/search?mode=${m.key}`;
-      return (
-        <a
-          href={href}
-          class={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-            isActive
-              ? "bg-blue-600 text-white font-semibold"
-              : "bg-slate-200 text-slate-700 hover:bg-slate-300"
-          }`}
-          title={m.desc}
-        >
-          {m.label}
-        </a>
-      );
-    })}
-    <span class="text-xs text-slate-400 self-center ml-2">
-      {modes.find((m) => m.key === mode)?.desc}
-    </span>
+    {searchError && (
+      <div class="rounded-lg p-4 mb-4 text-sm" style="background:rgba(180,60,60,.12); border:1px solid rgba(180,60,60,.4); color:#e0a0a0;">
+        <strong>Search error:</strong> {searchError}
+      </div>
+    )}
+    {query && !searchError && hits.length === 0 && (
+      <p style="color:var(--text-dim);">No matches for <strong>"{query}"</strong> in {mode} mode.</p>
+    )}
+    {!query && <p style="color:var(--text-dim);">Type a query to search across all indexed messages.</p>}
+
+    {hits.length > 0 && (
+      <div class="space-y-3">
+        <p class="text-sm" style="color:var(--text-faint);">{hits.length} result{hits.length === 1 ? "" : "s"} for <strong style="color:var(--text-dim);">"{query}"</strong></p>
+        {hits.map((h) => (
+          <a href={`/?session=${h.sessionId}`} class="shit block rounded-lg p-4">
+            <div class="flex items-center gap-2 text-sm mb-2" style="color:var(--text-faint);">
+              <span class="font-mono-w" style="color:var(--amber);">{shortSessionId(h.sessionId)}</span>
+              <span>·</span><span>{h.session?.projectLabel ?? "unknown"}</span>
+              <span>·</span><span>line {h.lineNo}</span>
+              {h.session?.lastActivity && <><span>·</span><span>{formatTimestamp(h.session.lastActivity)}</span></>}
+            </div>
+            <div class="text-sm shit-snip" set:html={h.snippet}></div>
+          </a>
+        ))}
+      </div>
+    )}
   </div>
 
-  {searchError && (
-    <div class="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4 mb-4 text-sm">
-      <strong>Search error:</strong> {searchError}
-    </div>
-  )}
-
-  {query && !searchError && hits.length === 0 && (
-    <p class="text-slate-500">No matches for <strong>"{query}"</strong> in {mode} mode.</p>
-  )}
-
-  {hits.length > 0 && (
-    <div class="space-y-4">
-      <p class="text-sm text-slate-500">{hits.length} result{hits.length === 1 ? "" : "s"} for <strong>"{query}"</strong></p>
-      {hits.map((h) => (
-        <a href={`/s/${h.sessionId}#line-${h.lineNo}`}
-           class="block bg-white border border-slate-200 rounded-lg p-4 hover:bg-slate-50 transition-colors">
-          <div class="flex items-center gap-2 text-sm text-slate-500 mb-2">
-            <span class="font-mono text-blue-700">{shortSessionId(h.sessionId)}</span>
-            <span>·</span>
-            <span>{h.session?.projectLabel ?? "unknown"}</span>
-            <span>·</span>
-            <span>line {h.lineNo}</span>
-            {h.session?.lastActivity && (
-              <>
-                <span>·</span>
-                <span>{formatTimestamp(h.session.lastActivity)}</span>
-              </>
-            )}
-          </div>
-          <div class="text-sm" set:html={h.snippet}></div>
-        </a>
-      ))}
-    </div>
-  )}
-
-  {!query && (
-    <p class="text-slate-500">Type a query to search across all indexed messages.</p>
-  )}
-</Base>
+  <style>
+    .smode { padding:6px 12px; font-size:13px; border-radius:8px; background:var(--raise); color:var(--text-dim); text-decoration:none; }
+    .smode[data-on="true"] { background:var(--amber); color:#241f17; font-weight:600; }
+    .shit { background:var(--panel); border:1px solid var(--border-soft); color:var(--text); text-decoration:none; }
+    .shit:hover { background:var(--panel-2); }
+    .shit-snip :global(mark) { background:rgba(210,168,95,.35); color:var(--amber-bright); border-radius:3px; padding:0 2px; }
+  </style>
+</AppShell>

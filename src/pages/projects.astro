@@ -1,106 +1,86 @@
 ---
-import Base from "../layouts/Base.astro";
+import AppShell from "../layouts/AppShell.astro";
+import Sidebar from "../components/Sidebar.astro";
 import { openDb } from "../db/init";
 import { listProjects } from "../db/sessions";
 import { listExclusions } from "../db/exclusions";
+import { getLibraryTree } from "../db/library";
 import { formatTimestamp } from "../lib/render";
 import { INDEX_DB_PATH } from "../paths";
 
 const db = openDb(INDEX_DB_PATH);
 const projects = listProjects(db);
 const hidden = listExclusions(db);
+const tree = getLibraryTree(db);
 db.close();
 ---
-<Base title="ccaudit — projects">
-  <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
-    <h1 class="text-2xl font-bold">Projects</h1>
-    {hidden.length > 0 && (
-      <details class="text-sm">
-        <summary class="cursor-pointer text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 select-none">
-          {hidden.length} hidden {hidden.length === 1 ? "directory" : "directories"} — manage
-        </summary>
-        <div class="mt-2 rounded-lg border border-slate-200 dark:border-slate-700 divide-y divide-slate-200 dark:divide-slate-700 min-w-[20rem]">
-          {hidden.map((prefix) => (
-            <div class="flex items-center justify-between gap-3 px-3 py-2">
-              <code class="text-xs text-slate-500 break-all">{prefix}</code>
-              <button
-                data-exclude-action="remove"
-                data-exclude-prefix={prefix}
-                class="shrink-0 px-2 py-1 text-xs font-medium rounded-md bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600"
-              >
-                Unhide
-              </button>
-            </div>
-          ))}
-        </div>
-      </details>
-    )}
-  </div>
+<AppShell title="ccaudit — directories">
+  <Sidebar slot="sidebar" tree={tree} />
+  <div slot="reader" class="p-8 max-w-[1000px]">
+    <h1 class="font-serif text-2xl font-semibold mb-1" style="color:var(--text);">Directories</h1>
+    <p class="text-[13px] mb-5" style="color:var(--text-dim);">Hide noisy directories from every view. Hiding is lossless — data is kept, just filtered.</p>
 
-  {projects.length === 0 ? (
-    <p class="text-slate-500">No projects indexed yet.</p>
-  ) : (
-    <div class="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+    {hidden.length > 0 && (
+      <div class="rounded-xl mb-6" style="background:var(--panel); border:1px solid var(--border-soft);">
+        <div class="px-4 py-2.5 text-[11px] uppercase tracking-wider" style="color:var(--text-faint); border-bottom:1px solid var(--border-soft);">{hidden.length} hidden</div>
+        {hidden.map((prefix) => (
+          <div class="flex items-center justify-between gap-3 px-4 py-2.5" style="border-bottom:1px solid var(--border-soft);">
+            <code class="text-xs font-mono-w break-all" style="color:var(--text-dim);">{prefix}</code>
+            <button data-exclude-action="remove" data-exclude-prefix={prefix} class="pbtn shrink-0">Unhide</button>
+          </div>
+        ))}
+      </div>
+    )}
+
+    <div class="rounded-xl overflow-hidden" style="background:var(--panel); border:1px solid var(--border-soft);">
       <table class="w-full text-sm">
-        <thead class="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs uppercase">
-          <tr>
-            <th class="px-3 py-2 text-left font-medium">Last activity</th>
-            <th class="px-3 py-2 text-left font-medium">Project</th>
-            <th class="px-3 py-2 text-right font-medium">Sessions</th>
-            <th class="px-3 py-2 text-left font-medium">Path</th>
-            <th class="px-3 py-2 text-right font-medium"></th>
+        <thead>
+          <tr style="color:var(--text-faint); border-bottom:1px solid var(--border-soft);">
+            <th class="px-3 py-2 text-left font-medium text-[11px] uppercase tracking-wider">Last activity</th>
+            <th class="px-3 py-2 text-left font-medium text-[11px] uppercase tracking-wider">Project</th>
+            <th class="px-3 py-2 text-right font-medium text-[11px] uppercase tracking-wider">Sessions</th>
+            <th class="px-3 py-2 text-left font-medium text-[11px] uppercase tracking-wider">Path</th>
+            <th class="px-3 py-2"></th>
           </tr>
         </thead>
         <tbody>
           {projects.map((p) => (
-            <tr class="border-b border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                onclick={`window.location='/?project=${encodeURIComponent(p.projectDir)}'`}>
-              <td class="px-3 py-2 whitespace-nowrap text-slate-600 dark:text-slate-400">{formatTimestamp(p.lastActivity)}</td>
-              <td class="px-3 py-2 font-semibold">
-                <a href={`/?project=${encodeURIComponent(p.projectDir)}`} class="text-blue-700 dark:text-blue-400 hover:underline">
-                  {p.projectLabel}
-                </a>
-              </td>
-              <td class="px-3 py-2 text-right tabular-nums">{p.sessionCount}</td>
-              <td class="px-3 py-2 text-slate-500 font-mono text-xs">{p.projectDir}</td>
+            <tr class="prow" onclick={`window.location='/?project=${encodeURIComponent(p.projectDir)}'`} style="border-bottom:1px solid var(--border-soft);">
+              <td class="px-3 py-2 whitespace-nowrap" style="color:var(--text-dim);">{formatTimestamp(p.lastActivity)}</td>
+              <td class="px-3 py-2 font-semibold"><span style="color:var(--amber);">{p.projectLabel}</span></td>
+              <td class="px-3 py-2 text-right tabular-nums" style="color:var(--text-dim);">{p.sessionCount}</td>
+              <td class="px-3 py-2 font-mono-w text-xs" style="color:var(--text-faint);">{p.projectDir}</td>
               <td class="px-3 py-2 text-right" onclick="event.stopPropagation()">
-                <button
-                  data-exclude-action="add"
-                  data-exclude-prefix={p.projectDir}
-                  title={`Hide ${p.projectDir} from all views`}
-                  class="px-2 py-1 text-xs font-medium rounded-md text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200"
-                >
-                  Hide
-                </button>
+                <button data-exclude-action="add" data-exclude-prefix={p.projectDir} title={`Hide ${p.projectDir}`} class="pbtn">Hide</button>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
-  )}
+  </div>
+
+  <style>
+    .prow { cursor:pointer; }
+    .prow:hover { background:var(--panel-2); }
+    .pbtn { padding:4px 10px; font-size:12px; font-weight:500; border-radius:7px; background:var(--raise); color:var(--text-dim); border:1px solid var(--border); cursor:pointer; }
+    .pbtn:hover { background:var(--border); color:var(--text); }
+  </style>
 
   <script>
-    // Hide / Unhide a directory via same-origin JSON POST, then refresh.
     document.querySelectorAll("[data-exclude-action]").forEach((btn) => {
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
         const el = e.currentTarget as HTMLButtonElement;
-        const action = el.dataset.excludeAction;
-        const prefix = el.dataset.excludePrefix;
         el.disabled = true;
         try {
           const res = await fetch("/api/exclusions", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action, prefix }),
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: el.dataset.excludeAction, prefix: el.dataset.excludePrefix }),
           });
-          if (res.ok) location.reload();
-          else el.disabled = false;
-        } catch {
-          el.disabled = false;
-        }
+          if (res.ok) location.reload(); else el.disabled = false;
+        } catch { el.disabled = false; }
       });
     });
   </script>
-</Base>
+</AppShell>
