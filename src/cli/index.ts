@@ -4,6 +4,7 @@ import { listCommand } from "./list.js";
 import { searchCommand } from "./search.js";
 import { doctorCommand } from "./doctor.js";
 import { serveCommand } from "./serve.js";
+import { mcpCommand } from "./mcp.js";
 
 const program = new Command();
 program
@@ -41,5 +42,10 @@ program
   .command("doctor")
   .description("Diagnose health of the index db and access to ~/.claude/projects/")
   .action(doctorCommand);
+
+program
+  .command("mcp")
+  .description("Start an MCP stdio server exposing session-history query tools")
+  .action(mcpCommand);
 
 program.parseAsync();
