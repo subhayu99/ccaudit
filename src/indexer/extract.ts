@@ -1,4 +1,5 @@
 import type { RawMessage } from "../types.js";
+import { cleanPromptText } from "../lib/clean-prompt.js";
 
 const MAX_TOOL_RESULT_CHARS = 2000;
 
@@ -40,10 +41,14 @@ export function extractText(raw: RawMessage): string | null {
     return typeof raw.title === "string" ? raw.title : null;
   }
   const content = raw.message?.content;
-  if (typeof content === "string") return content.trim() || null;
-  if (isPartArray(content)) {
-    const text = extractFromParts(content as ContentPart[]);
-    return text || null;
+  let text: string | null = null;
+  if (typeof content === "string") text = content.trim() || null;
+  else if (isPartArray(content)) text = extractFromParts(content as ContentPart[]) || null;
+
+  // User messages from Conductor are prefixed with injected instruction blocks
+  // that bury the real ask; strip them so titles/timeline/search stay clean.
+  if (text && t === "user") {
+    text = cleanPromptText(text) || null;
   }
-  return null;
+  return text;
 }

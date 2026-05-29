@@ -74,6 +74,33 @@ CREATE TABLE IF NOT EXISTS session_exports (
   out_path    TEXT NOT NULL,
   PRIMARY KEY (session_id, format, exported_at)
 );
+
+-- Repo-identity resolution (Layer 1): an absolute working directory annotated
+-- with its captured immutable identity tokens. Captured at index time while
+-- the directory still exists; persisted keyed by path. See the design doc.
+CREATE TABLE IF NOT EXISTS workdirs (
+  path           TEXT PRIMARY KEY,
+  kind           TEXT NOT NULL,          -- git | manifest | path
+  remote         TEXT,                   -- credential-stripped host/org/repo
+  manifest_name  TEXT,
+  root_commit    TEXT,
+  exists_on_disk INTEGER NOT NULL DEFAULT 0,
+  resolved_at    INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS workdir_tokens (
+  path  TEXT NOT NULL REFERENCES workdirs(path) ON DELETE CASCADE,
+  token TEXT NOT NULL,
+  PRIMARY KEY (path, token)
+);
+CREATE INDEX IF NOT EXISTS idx_workdir_tokens_token ON workdir_tokens(token);
+
+-- User-chosen directory prefixes to hide from all views (and skip at index
+-- time). Lossless: existing rows are kept, just filtered — toggling is instant.
+CREATE TABLE IF NOT EXISTS excluded_prefixes (
+  prefix      TEXT PRIMARY KEY,
+  created_at  INTEGER NOT NULL
+);
 `;
 
 export function openDb(path: string): Database.Database {

@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import type { MessageRow, SearchHit } from "../types.js";
+import { exclusionCondition } from "./exclusions.js";
 
 type MessageRowSql = {
   session_id: string;
@@ -77,6 +78,7 @@ export function searchMessages(
   opts: { limit?: number } = {}
 ): SearchHit[] {
   const limit = opts.limit ?? 50;
+  const excl = exclusionCondition(db);
   // FTS5 snippet(): table, column, before, after, ellipsis, max-tokens
   const rows = db
     .prepare(
@@ -86,11 +88,17 @@ export function searchMessages(
               bm25(messages_fts) AS rank
          FROM messages_fts
          JOIN messages m ON m.rowid = messages_fts.rowid
-        WHERE messages_fts MATCH ?
+        WHERE messages_fts MATCH @q
+          AND m.session_id IN (SELECT id FROM sessions WHERE ${excl.sql})
         ORDER BY rank ASC
-        LIMIT ?`
+        LIMIT @limit`
     )
-    .all(query, limit) as Array<{ sessionId: string; lineNo: number; snippet: string; rank: number }>;
+    .all({ q: query, limit, ...excl.params }) as Array<{
+    sessionId: string;
+    lineNo: number;
+    snippet: string;
+    rank: number;
+  }>;
   return rows;
 }
 
@@ -114,17 +122,23 @@ export function searchMessagesExact(
   opts: { limit?: number } = {}
 ): SearchHit[] {
   const limit = opts.limit ?? 50;
+  const excl = exclusionCondition(db);
   const rows = db
     .prepare(
       `SELECT session_id AS sessionId,
               line_no    AS lineNo,
               text_content AS text
          FROM messages
-        WHERE text_content LIKE '%' || ? || '%' COLLATE NOCASE
+        WHERE text_content LIKE '%' || @q || '%' COLLATE NOCASE
+          AND session_id IN (SELECT id FROM sessions WHERE ${excl.sql})
         ORDER BY session_id, line_no
-        LIMIT ?`
+        LIMIT @limit`
     )
-    .all(query, limit) as Array<{ sessionId: string; lineNo: number; text: string }>;
+    .all({ q: query, limit, ...excl.params }) as Array<{
+    sessionId: string;
+    lineNo: number;
+    text: string;
+  }>;
   return rows.map((r) => ({
     sessionId: r.sessionId,
     lineNo: r.lineNo,
@@ -154,6 +168,7 @@ export function searchMessagesRegex(
       return 0;
     }
   });
+  const excl = exclusionCondition(db);
   const rows = db
     .prepare(
       `SELECT session_id   AS sessionId,
@@ -161,11 +176,16 @@ export function searchMessagesRegex(
               text_content AS text
          FROM messages
         WHERE text_content IS NOT NULL
-          AND ccaudit_regexp(?, text_content) = 1
+          AND ccaudit_regexp(@pat, text_content) = 1
+          AND session_id IN (SELECT id FROM sessions WHERE ${excl.sql})
         ORDER BY session_id, line_no
-        LIMIT ?`
+        LIMIT @limit`
     )
-    .all(pattern, limit) as Array<{ sessionId: string; lineNo: number; text: string }>;
+    .all({ pat: pattern, limit, ...excl.params }) as Array<{
+    sessionId: string;
+    lineNo: number;
+    text: string;
+  }>;
   return rows.map((r) => {
     const match = r.text.match(re);
     const snippet = match

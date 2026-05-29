@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { exclusionCondition } from "./exclusions.js";
 
 export type IndexStats = {
   totalSessions: number;
@@ -9,6 +10,7 @@ export type IndexStats = {
 };
 
 export function getIndexStats(db: Database.Database): IndexStats {
+  const excl = exclusionCondition(db);
   const row = db
     .prepare(
       `SELECT
@@ -17,8 +19,9 @@ export function getIndexStats(db: Database.Database): IndexStats {
          SUM(CASE WHEN compact_count > 0 THEN 1 ELSE 0 END)  AS sessionsWithCompacts,
          MIN(started_at)                                       AS oldestSession,
          MAX(last_activity)                                    AS newestSession
-       FROM sessions`
+       FROM sessions
+      WHERE ${excl.sql}`
     )
-    .get() as IndexStats;
+    .get(excl.params) as IndexStats;
   return row;
 }

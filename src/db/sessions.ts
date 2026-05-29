@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import type { Session } from "../types.js";
+import { exclusionCondition } from "./exclusions.js";
 
 type SessionRowSql = {
   id: string;
@@ -90,6 +91,9 @@ export function listSessions(db: Database.Database, opts: ListSessionsOptions = 
     where.push("project_dir = @projectDir");
     params.projectDir = opts.projectDir;
   }
+  const excl = exclusionCondition(db);
+  where.push(excl.sql);
+  Object.assign(params, excl.params);
   const sql = `
     SELECT * FROM sessions
     ${where.length ? "WHERE " + where.join(" AND ") : ""}
@@ -115,6 +119,7 @@ export type ProjectSummary = {
 };
 
 export function listProjects(db: Database.Database): ProjectSummary[] {
+  const excl = exclusionCondition(db);
   const rows = db
     .prepare(
       `SELECT project_dir   AS projectDir,
@@ -122,9 +127,10 @@ export function listProjects(db: Database.Database): ProjectSummary[] {
               COUNT(*)      AS sessionCount,
               MAX(last_activity) AS lastActivity
          FROM sessions
+        WHERE ${excl.sql}
         GROUP BY project_dir, project_label
         ORDER BY lastActivity DESC NULLS LAST, projectLabel ASC`
     )
-    .all() as ProjectSummary[];
+    .all(excl.params) as ProjectSummary[];
   return rows;
 }

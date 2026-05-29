@@ -2,44 +2,105 @@
 import Base from "../layouts/Base.astro";
 import { openDb } from "../db/init";
 import { listProjects } from "../db/sessions";
+import { listExclusions } from "../db/exclusions";
 import { formatTimestamp } from "../lib/render";
 import { INDEX_DB_PATH } from "../paths";
 
 const db = openDb(INDEX_DB_PATH);
 const projects = listProjects(db);
+const hidden = listExclusions(db);
 db.close();
 ---
 <Base title="ccaudit — projects">
-  <h1 class="text-2xl font-bold mb-4">Projects</h1>
+  <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+    <h1 class="text-2xl font-bold">Projects</h1>
+    {hidden.length > 0 && (
+      <details class="text-sm">
+        <summary class="cursor-pointer text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 select-none">
+          {hidden.length} hidden {hidden.length === 1 ? "directory" : "directories"} — manage
+        </summary>
+        <div class="mt-2 rounded-lg border border-slate-200 dark:border-slate-700 divide-y divide-slate-200 dark:divide-slate-700 min-w-[20rem]">
+          {hidden.map((prefix) => (
+            <div class="flex items-center justify-between gap-3 px-3 py-2">
+              <code class="text-xs text-slate-500 break-all">{prefix}</code>
+              <button
+                data-exclude-action="remove"
+                data-exclude-prefix={prefix}
+                class="shrink-0 px-2 py-1 text-xs font-medium rounded-md bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600"
+              >
+                Unhide
+              </button>
+            </div>
+          ))}
+        </div>
+      </details>
+    )}
+  </div>
+
   {projects.length === 0 ? (
     <p class="text-slate-500">No projects indexed yet.</p>
   ) : (
-    <div class="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+    <div class="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
       <table class="w-full text-sm">
-        <thead class="bg-slate-100 text-slate-600 text-xs uppercase">
+        <thead class="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs uppercase">
           <tr>
             <th class="px-3 py-2 text-left font-medium">Last activity</th>
             <th class="px-3 py-2 text-left font-medium">Project</th>
             <th class="px-3 py-2 text-right font-medium">Sessions</th>
             <th class="px-3 py-2 text-left font-medium">Path</th>
+            <th class="px-3 py-2 text-right font-medium"></th>
           </tr>
         </thead>
         <tbody>
           {projects.map((p) => (
-            <tr class="border-b border-slate-200 hover:bg-slate-100 cursor-pointer"
+            <tr class="border-b border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                 onclick={`window.location='/?project=${encodeURIComponent(p.projectDir)}'`}>
-              <td class="px-3 py-2 whitespace-nowrap text-slate-600">{formatTimestamp(p.lastActivity)}</td>
+              <td class="px-3 py-2 whitespace-nowrap text-slate-600 dark:text-slate-400">{formatTimestamp(p.lastActivity)}</td>
               <td class="px-3 py-2 font-semibold">
-                <a href={`/?project=${encodeURIComponent(p.projectDir)}`} class="text-blue-700 hover:underline">
+                <a href={`/?project=${encodeURIComponent(p.projectDir)}`} class="text-blue-700 dark:text-blue-400 hover:underline">
                   {p.projectLabel}
                 </a>
               </td>
               <td class="px-3 py-2 text-right tabular-nums">{p.sessionCount}</td>
               <td class="px-3 py-2 text-slate-500 font-mono text-xs">{p.projectDir}</td>
+              <td class="px-3 py-2 text-right" onclick="event.stopPropagation()">
+                <button
+                  data-exclude-action="add"
+                  data-exclude-prefix={p.projectDir}
+                  title={`Hide ${p.projectDir} from all views`}
+                  class="px-2 py-1 text-xs font-medium rounded-md text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200"
+                >
+                  Hide
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
   )}
+
+  <script>
+    // Hide / Unhide a directory via same-origin JSON POST, then refresh.
+    document.querySelectorAll("[data-exclude-action]").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const el = e.currentTarget as HTMLButtonElement;
+        const action = el.dataset.excludeAction;
+        const prefix = el.dataset.excludePrefix;
+        el.disabled = true;
+        try {
+          const res = await fetch("/api/exclusions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action, prefix }),
+          });
+          if (res.ok) location.reload();
+          else el.disabled = false;
+        } catch {
+          el.disabled = false;
+        }
+      });
+    });
+  </script>
 </Base>

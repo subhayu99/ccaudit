@@ -1,7 +1,13 @@
 import type Database from "better-sqlite3";
+import { exclusionCondition } from "./exclusions.js";
 
-export type GraphNodeType = "folder" | "project" | "session";
-export type GraphLinkKind = "session-project" | "project-folder" | "continuation";
+export type GraphNodeType = "folder" | "project" | "session" | "repo" | "workdir";
+export type GraphLinkKind =
+  | "session-project"
+  | "project-folder"
+  | "continuation"
+  | "session-workdir"
+  | "workdir-repo";
 
 export type GraphNode = {
   id: string;
@@ -13,11 +19,18 @@ export type GraphNode = {
   messageCount?: number;
   compactCount?: number;
   lastActivity?: number | null;
+  // resume command needs the exact cwd the session ran in
+  cwd?: string | null;
   // project-only fields
   sessionCount?: number;
   // folder-only fields
   folderPath?: string;
   projectCount?: number;
+  // repo / workdir fields
+  remote?: string | null;
+  workdirPath?: string;
+  workdirCount?: number;
+  existsOnDisk?: boolean;
 };
 
 export type GraphLink = {
@@ -74,15 +87,17 @@ function shortPath(p: string, n = 2): string {
  *   simulation), so toggling them never disturbs the layout.
  */
 export function getGraphData(db: Database.Database): GraphData {
+  const excl = exclusionCondition(db);
   const projects = db
     .prepare(
       `SELECT project_dir   AS projectDir,
               project_label AS projectLabel,
               COUNT(*)      AS sessionCount
          FROM sessions
+        WHERE ${excl.sql}
         GROUP BY project_dir, project_label`
     )
-    .all() as ProjectRow[];
+    .all(excl.params) as ProjectRow[];
 
   const sessions = db
     .prepare(
@@ -94,9 +109,10 @@ export function getGraphData(db: Database.Database): GraphData {
               last_activity AS lastActivity,
               first_prompt  AS firstPrompt,
               ai_title      AS aiTitle
-         FROM sessions`
+         FROM sessions
+        WHERE ${excl.sql}`
     )
-    .all() as SessionRow[];
+    .all(excl.params) as SessionRow[];
 
   const nodes: GraphNode[] = [];
   const links: GraphLink[] = [];
