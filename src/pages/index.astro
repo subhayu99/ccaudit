@@ -4,9 +4,9 @@ import Sidebar from "../components/Sidebar.astro";
 import SessionListPane from "../components/SessionListPane.astro";
 import SessionReader from "../components/SessionReader.astro";
 import CommandPalette from "../components/CommandPalette.astro";
+import Dashboard from "../components/Dashboard.astro";
 import { openDb } from "../db/init";
 import { getLibraryTree, listSessionsGrouped, type Selection } from "../db/library";
-import { getIndexStats } from "../db/stats";
 import { INDEX_DB_PATH } from "../paths";
 
 const url = Astro.url;
@@ -20,7 +20,6 @@ const sel: Selection = repo ? { repo } : workdir ? { workdir } : { mode: mode ??
 const db = openDb(INDEX_DB_PATH);
 const tree = getLibraryTree(db);
 const list = listSessionsGrouped(db, sel, Date.now());
-const stats = getIndexStats(db);
 db.close();
 
 // Flat jump-index for the ⌘K palette: repos, workdirs, and sessions.
@@ -34,28 +33,7 @@ const paletteItems = [
   <Sidebar slot="sidebar" tree={tree} activeRepo={repo} activeWorkdir={workdir} mode={mode} />
   <SessionListPane slot="list" data={list} activeSession={session} />
   <div slot="reader">
-    {session ? (
-      <SessionReader sessionId={session} />
-    ) : (
-      <div class="p-8">
-        <h2 class="font-serif text-[26px] font-semibold mb-1" style="color:var(--text);">Your Claude history</h2>
-        <p class="text-[14px] mb-6" style="color:var(--text-dim);">Pick a repository or session on the left to start reading.</p>
-        <div class="flex gap-3 flex-wrap">
-          <div class="rounded-xl px-5 py-4" style="background:var(--panel); border:1px solid var(--border-soft);">
-            <div class="font-serif text-[28px]" style="color:var(--text);">{stats.totalSessions}</div>
-            <div class="text-[12px] uppercase tracking-wider" style="color:var(--text-faint);">sessions</div>
-          </div>
-          <div class="rounded-xl px-5 py-4" style="background:var(--panel); border:1px solid var(--border-soft);">
-            <div class="font-serif text-[28px]" style="color:var(--text);">{stats.totalMessages.toLocaleString()}</div>
-            <div class="text-[12px] uppercase tracking-wider" style="color:var(--text-faint);">messages</div>
-          </div>
-          <div class="rounded-xl px-5 py-4" style="background:var(--panel); border:1px solid var(--border-soft);">
-            <div class="font-serif text-[28px]" style="color:var(--c-orange);">{stats.sessionsWithCompacts}</div>
-            <div class="text-[12px] uppercase tracking-wider" style="color:var(--text-faint);">with compacts</div>
-          </div>
-        </div>
-      </div>
-    )}
+    {session ? <SessionReader sessionId={session} /> : <Dashboard />}
   </div>
   <CommandPalette items={paletteItems} />
 </AppShell>

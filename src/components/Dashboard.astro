@@ -1,0 +1,80 @@
+---
+// src/components/Dashboard.astro — warm empty-state shown when no session is selected.
+import { openDb } from "../db/init";
+import { getIndexStats } from "../db/stats";
+import { getActivityByDay, getToolUsage } from "../db/analytics";
+import { INDEX_DB_PATH } from "../paths";
+
+const db = openDb(INDEX_DB_PATH);
+const stats = getIndexStats(db);
+const activity = getActivityByDay(db);
+const tools = getToolUsage(db).slice(0, 12);
+db.close();
+
+// Build a GitHub-style heatmap grid for the last 18 weeks (msg counts per day).
+const msgsByDay = new Map(activity.map((a) => [a.day, a.messages]));
+const DAYS = 18 * 7;
+const today = new Date();
+today.setHours(0, 0, 0, 0);
+const cells: { day: string; level: number }[] = [];
+const max = Math.max(1, ...activity.map((a) => a.messages));
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+for (let i = DAYS - 1; i >= 0; i--) {
+  const d = new Date(today);
+  d.setDate(today.getDate() - i);
+  const key = iso(d);
+  const m = msgsByDay.get(key) ?? 0;
+  const level = m === 0 ? 0 : m < max * 0.1 ? 1 : m < max * 0.3 ? 2 : m < max * 0.6 ? 3 : 4;
+  cells.push({ day: key, level });
+}
+const HEAT = ["var(--raise)", "rgba(127,174,122,.35)", "rgba(127,174,122,.6)", "rgba(127,174,122,.85)", "#7fae7a"];
+const toolMax = Math.max(1, ...tools.map((t) => t.count));
+const totalTools = tools.reduce((s, t) => s + t.count, 0);
+---
+<div class="p-8 max-w-[860px]">
+  <h2 class="font-serif text-[26px] font-semibold mb-1" style="color:var(--text);">Your Claude history</h2>
+  <p class="text-[14px] mb-6" style="color:var(--text-dim);">Pick a repository or session on the left, or press <kbd class="font-mono-w" style="background:var(--raise);border:1px solid var(--border);border-radius:5px;padding:1px 6px;font-size:11px;">⌘K</kbd> to jump anywhere.</p>
+
+  <div class="flex gap-3 flex-wrap mb-8">
+    {[["sessions", stats.totalSessions.toLocaleString(), "var(--text)"],
+      ["messages", stats.totalMessages.toLocaleString(), "var(--text)"],
+      ["with compacts", String(stats.sessionsWithCompacts), "var(--c-orange)"]].map(([label, val, color]) => (
+      <div class="rounded-xl px-5 py-4" style="background:var(--panel); border:1px solid var(--border-soft);">
+        <div class="font-serif text-[28px]" style={`color:${color};`}>{val}</div>
+        <div class="text-[12px] uppercase tracking-wider" style="color:var(--text-faint);">{label}</div>
+      </div>
+    ))}
+  </div>
+
+  <h3 class="font-serif text-[16px] mb-3" style="color:var(--text);">Activity</h3>
+  <div class="rounded-xl p-4 mb-8" style="background:var(--panel); border:1px solid var(--border-soft);">
+    <div class="heatmap">
+      {cells.map((c) => (
+        <span class="cell" title={`${c.day}`} style={`background:${HEAT[c.level]};`}></span>
+      ))}
+    </div>
+    <div class="flex items-center gap-1.5 mt-3 text-[11px]" style="color:var(--text-faint);">
+      <span>Less</span>
+      {HEAT.map((h) => <span class="cell" style={`background:${h};`}></span>)}
+      <span>More</span>
+    </div>
+  </div>
+
+  <h3 class="font-serif text-[16px] mb-3" style="color:var(--text);">Tool usage <span class="text-[12px]" style="color:var(--text-faint);">({totalTools.toLocaleString()} calls)</span></h3>
+  <div class="rounded-xl p-4" style="background:var(--panel); border:1px solid var(--border-soft);">
+    {tools.map((t) => (
+      <div class="flex items-center gap-3 mb-1.5">
+        <span class="font-mono-w text-[12px] w-32 shrink-0 truncate" style="color:var(--text-dim);">{t.tool}</span>
+        <span class="track"><span class="bar" style={`width:${Math.max(2, (t.count / toolMax) * 100)}%;`}></span></span>
+        <span class="font-mono-w text-[11.5px] w-16 text-right tabular-nums shrink-0" style="color:var(--text-faint);">{t.count.toLocaleString()}</span>
+      </div>
+    ))}
+  </div>
+</div>
+
+<style>
+  .heatmap { display:grid; grid-auto-flow:column; grid-template-rows:repeat(7,11px); grid-auto-columns:11px; gap:3px; }
+  .cell { width:11px; height:11px; border-radius:3px; display:inline-block; }
+  .track { flex:1; height:14px; background:var(--raise); border-radius:4px; overflow:hidden; }
+  .bar { display:block; height:14px; border-radius:4px; background:linear-gradient(90deg,var(--amber),var(--c-orange)); }
+</style>

@@ -44,7 +44,19 @@ const { tree, activeRepo, activeWorkdir, mode } = Astro.props;
       </div>
     ))}
   </nav>
+  <div class="flex items-center gap-3 px-4 py-2.5 text-[12.5px]" style="border-top:1px solid var(--border-soft); color:var(--text-dim);">
+    <a href="/projects" style="color:var(--text-dim); text-decoration:none;" title="Manage hidden directories">⌫ Hidden</a>
+    <button id="theme-toggle" class="ml-auto" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:12.5px;" title="Toggle theme">☾ Theme</button>
+  </div>
 </div>
+
+<script>
+  // Theme toggle: flip the warm light/dark variant and persist it.
+  document.getElementById("theme-toggle")?.addEventListener("click", () => {
+    const light = document.documentElement.classList.toggle("theme-light");
+    try { localStorage.setItem("ccaudit-theme", light ? "light" : "dark"); } catch {}
+  });
+</script>
 
 <style>
   .lib-item { display:flex; align-items:center; gap:9px; padding:6px 10px; border-radius:7px; cursor:pointer; white-space:nowrap; font-size:14px; color:var(--text-dim); text-decoration:none; }
