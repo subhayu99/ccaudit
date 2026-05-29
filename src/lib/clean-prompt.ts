@@ -28,11 +28,26 @@ const LEADING_ATTACHMENT_PATH = /^\s*\/tmp\/attachments\/\S+[ \t]*\r?\n?/;
 const OBSERVER_SIGNATURE = /^\s*(Hello memory agent,\s*you are continuing to observe|<observed_from_primary_session>)/i;
 const USER_REQUEST = /<user_request>([\s\S]*?)<\/user_request>/i;
 
+// Slash-command echoes Claude Code writes as the first "user" turn.
+const COMMAND_ECHO = /^\s*<command-(name|message|args)>/i;
+
 export function cleanPromptText(text: string): string {
   // Observer boilerplate → surface the observed <user_request> (or nothing).
   if (OBSERVER_SIGNATURE.test(text)) {
     const m = text.match(USER_REQUEST);
     return m && m[1]!.trim() ? m[1]!.replace(/\s+/g, " ").trim() : "";
+  }
+
+  // Slash-command echoes → surface the command (e.g. "/insights"). Anchored.
+  if (COMMAND_ECHO.test(text)) {
+    const name = text.match(/<command-name>([\s\S]*?)<\/command-name>/i);
+    if (name && name[1]!.trim()) return name[1]!.trim();
+    const msg = text.match(/<command-message>([\s\S]*?)<\/command-message>/i);
+    if (msg && msg[1]!.trim()) {
+      const m = msg[1]!.trim();
+      return m.startsWith("/") ? m : "/" + m;
+    }
+    return "";
   }
 
   let s = text;

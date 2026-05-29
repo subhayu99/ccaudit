@@ -70,3 +70,17 @@ describe("cleanPromptText — claude-mem observer sessions", () => {
     expect(cleanPromptText(t)).toBe(t);
   });
 });
+
+describe("cleanPromptText — slash-command echoes", () => {
+  it("surfaces the command name as the title", () => {
+    const t = "<command-message>insights</command-message>\n<command-name>/insights</command-name>";
+    expect(cleanPromptText(t)).toBe("/insights");
+  });
+  it("falls back to the command message when there is no name", () => {
+    expect(cleanPromptText("<command-message>status-update</command-message>")).toBe("/status-update");
+  });
+  it("does not touch a normal message that mentions a slash command mid-text", () => {
+    const t = "I ran /insights and it worked great";
+    expect(cleanPromptText(t)).toBe(t);
+  });
+});
