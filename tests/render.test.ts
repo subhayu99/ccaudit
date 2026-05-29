@@ -41,6 +41,7 @@ describe("lib/message-kind", () => {
   it("classifies a plain user message as user-text", () => {
     expect(classifyMessage(baseRow({
       type: "user",
+      textContent: "hello",
       rawJson: JSON.stringify({ message: { content: "hello" } }),
     }))).toBe("user-text");
   });
@@ -67,7 +68,22 @@ describe("lib/message-kind", () => {
     expect(classifyMessage(baseRow({ type: "assistant", isSidechain: true }))).toBe("sidechain");
   });
 
-  it("classifies attachment type as attachment", () => {
-    expect(classifyMessage(baseRow({ type: "attachment" }))).toBe("attachment");
+  it("classifies attachment with a real filename as attachment", () => {
+    expect(classifyMessage(baseRow({ type: "attachment", textContent: "[attachment: diagram.png]" }))).toBe("attachment");
+  });
+
+  it("classifies internal/system message types as noise", () => {
+    for (const t of ["last-prompt", "permission-mode", "queue-operation", "file-history-snapshot", "ai-title", "system", "agent-name"]) {
+      expect(classifyMessage(baseRow({ type: t, textContent: "whatever" }))).toBe("noise");
+    }
+  });
+
+  it("classifies empty user/assistant turns as noise", () => {
+    expect(classifyMessage(baseRow({ type: "assistant", textContent: null, rawJson: "{}" }))).toBe("noise");
+    expect(classifyMessage(baseRow({ type: "user", textContent: "   ", rawJson: "{}" }))).toBe("noise");
+  });
+
+  it("classifies attachment with unknown filename as noise", () => {
+    expect(classifyMessage(baseRow({ type: "attachment", textContent: "[attachment: unknown]" }))).toBe("noise");
   });
 });

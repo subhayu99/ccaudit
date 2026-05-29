@@ -1,6 +1,18 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+/* Keep rendered-markdown code blocks (e.g. pasted JSON blobs) from forcing
+   horizontal page overflow. Long lines wrap; very long tokens break. */
+.prose pre {
+  overflow-x: auto;
+  max-width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.prose code {
+  overflow-wrap: anywhere;
+}
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* Dark mode color overrides — applied when <html class="dark"> */

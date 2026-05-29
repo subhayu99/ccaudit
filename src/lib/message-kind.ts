@@ -8,18 +8,42 @@ export type MessageKind =
   | "attachment"
   | "compact-summary"
   | "sidechain"
-  | "other";
+  | "noise";
 
 /**
- * Classify a message based on its type + structural shape (parsed once from raw_json).
- * Order matters: compact and sidechain are flagged before content-type classification.
+ * Internal Claude Code message types that aren't part of the visible conversation
+ * (metadata, state, snapshots). These are hidden by default behind the
+ * "Show system messages" toggle.
+ */
+const NOISE_TYPES = new Set([
+  "last-prompt",
+  "permission-mode",
+  "queue-operation",
+  "file-history-snapshot",
+  "ai-title",
+  "system",
+  "agent-name",
+  "pr-link",
+]);
+
+/**
+ * Classify a message by its type + structural shape (parsed once from raw_json).
+ * Order matters: compact and sidechain are flagged before content-type classification,
+ * and internal/empty messages collapse to "noise" so the conversation stays readable.
  */
 export function classifyMessage(m: MessageRow): MessageKind {
   if (m.isCompactSummary) return "compact-summary";
   if (m.isSidechain) return "sidechain";
-  if (m.type === "attachment") return "attachment";
+  if (NOISE_TYPES.has(m.type)) return "noise";
+
+  if (m.type === "attachment") {
+    // Attachments with no recoverable filename are noise.
+    if (!m.textContent || m.textContent === "[attachment: unknown]") return "noise";
+    return "attachment";
+  }
+
   if (m.type === "user" || m.type === "assistant") {
-    // Inspect raw_json to detect tool blocks within the user/assistant message
+    // Inspect raw_json to detect tool blocks within the user/assistant message.
     try {
       const raw = JSON.parse(m.rawJson);
       const content = raw?.message?.content;
@@ -32,7 +56,12 @@ export function classifyMessage(m: MessageRow): MessageKind {
     } catch {
       // fall through
     }
+    // Empty user/assistant turns (tool-only or thinking-only) render as empty
+    // boxes — collapse them to noise instead.
+    if (!m.textContent || !m.textContent.trim()) return "noise";
     return m.type === "user" ? "user-text" : "assistant-text";
   }
-  return "other";
+
+  // Unknown types → noise rather than an ugly fallback box.
+  return "noise";
 }
