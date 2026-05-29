@@ -2,6 +2,7 @@
 import AppShell from "../layouts/AppShell.astro";
 import Sidebar from "../components/Sidebar.astro";
 import SessionListPane from "../components/SessionListPane.astro";
+import SessionReader from "../components/SessionReader.astro";
 import { openDb } from "../db/init";
 import { getLibraryTree, listSessionsGrouped, type Selection } from "../db/library";
 import { getIndexStats } from "../db/stats";
@@ -24,15 +25,11 @@ db.close();
 <AppShell title="ccaudit">
   <Sidebar slot="sidebar" tree={tree} activeRepo={repo} activeWorkdir={workdir} mode={mode} />
   <SessionListPane slot="list" data={list} activeSession={session} />
-  <div slot="reader" class="p-8">
+  <div slot="reader">
     {session ? (
-      <div class="max-w-prose">
-        <p class="text-[13px]" style="color:var(--text-dim);">Opening the full reader…</p>
-        <a class="underline" style="color:var(--amber);" href={`/s/${session}`}>View session {session.slice(0,8)} →</a>
-        <script is:inline set:html={`location.href='/s/${session}'`}></script>
-      </div>
+      <SessionReader sessionId={session} />
     ) : (
-      <div>
+      <div class="p-8">
         <h2 class="font-serif text-[26px] font-semibold mb-1" style="color:var(--text);">Your Claude history</h2>
         <p class="text-[14px] mb-6" style="color:var(--text-dim);">Pick a repository or session on the left to start reading.</p>
         <div class="flex gap-3 flex-wrap">

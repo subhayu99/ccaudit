@@ -18,6 +18,8 @@ const { id } = Astro.params;
 if (!id) {
   return new Response("missing id", { status: 400 });
 }
+// The reader now lives in the 3-pane shell; keep old links working.
+return Astro.redirect(`/?session=${id}`);
 
 const db = openDb(INDEX_DB_PATH);
 const session = getSession(db, id);

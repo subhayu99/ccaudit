@@ -1,0 +1,169 @@
+---
+// src/components/SessionReader.astro — warm-obsidian in-shell transcript reader.
+import { openDb } from "../db/init";
+import { getSession } from "../db/sessions";
+import { getSessionMessages } from "../db/messages";
+import { classifyMessage } from "../lib/message-kind";
+import { renderMarkdown } from "../lib/markdown";
+import { formatTimestamp, truncate, shortSessionId } from "../lib/render";
+import { cleanPromptText } from "../lib/clean-prompt";
+import { INDEX_DB_PATH } from "../paths";
+
+interface Props { sessionId: string; }
+const { sessionId } = Astro.props;
+
+const db = openDb(INDEX_DB_PATH);
+const session = getSession(db, sessionId);
+const messages = session ? getSessionMessages(db, sessionId) : [];
+db.close();
+
+const classified = messages.map((m) => ({ m, kind: classifyMessage(m) }));
+const visible = classified.filter((c) => c.kind !== "noise");
+
+// Pre-render markdown + tool labels for each visible turn.
+type Block =
+  | { t: "user" | "assistant"; html: string; lineNo: number; label: string }
+  | { t: "tool-use" | "tool-result"; text: string; lineNo: number }
+  | { t: "attachment"; text: string; lineNo: number }
+  | { t: "compact"; n: number; lineNo: number }
+  | { t: "sidechain"; html: string; lineNo: number };
+
+function toolName(rawJson: string): string {
+  try {
+    const c = JSON.parse(rawJson)?.message?.content;
+    if (Array.isArray(c)) {
+      const u = c.find((p: { type?: string }) => p?.type === "tool_use");
+      if (u?.name) return u.name as string;
+      if (c.some((p: { type?: string }) => p?.type === "tool_result")) return "result";
+    }
+  } catch { /* ignore */ }
+  return "tool";
+}
+
+let compactN = 0;
+const blocks: Block[] = [];
+for (const { m, kind } of visible) {
+  if (kind === "user-text") blocks.push({ t: "user", html: await renderMarkdown(m.textContent), lineNo: m.lineNo, label: "You" });
+  else if (kind === "assistant-text") blocks.push({ t: "assistant", html: await renderMarkdown(m.textContent), lineNo: m.lineNo, label: "Claude" });
+  else if (kind === "tool-use") blocks.push({ t: "tool-use", text: toolName(m.rawJson), lineNo: m.lineNo });
+  else if (kind === "tool-result") blocks.push({ t: "tool-result", text: truncate(m.textContent ?? "", 280) || "result", lineNo: m.lineNo });
+  else if (kind === "attachment") blocks.push({ t: "attachment", text: m.textContent ?? "attachment", lineNo: m.lineNo });
+  else if (kind === "compact-summary") { compactN += 1; blocks.push({ t: "compact", n: compactN, lineNo: m.lineNo }); }
+  else if (kind === "sidechain") blocks.push({ t: "sidechain", html: await renderMarkdown(m.textContent), lineNo: m.lineNo });
+}
+
+const title = session
+  ? (session.aiTitle ?? (session.firstPrompt ? cleanPromptText(session.firstPrompt) : "") ?? "").trim() || `Session ${shortSessionId(session.id)}`
+  : "";
+const resumeCwd = session?.cwd ?? session?.projectDir ?? "";
+const resumeCmd = `cd ${resumeCwd}\nclaude --resume ${sessionId}`;
+const noiseCount = classified.length - visible.length;
+
+// minimap landmarks: user turns + compacts
+const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
+---
+{!session ? (
+  <div class="p-8" style="color:var(--text-dim);">Session not found.</div>
+) : (
+  <div class="reader-wrap">
+    <header class="px-7 pt-6 pb-4" style="border-bottom:1px solid var(--border-soft);">
+      <div class="text-[12px] mb-1.5 flex items-center gap-2" style="color:var(--text-faint);">
+        <a href="/" style="color:var(--text-faint); text-decoration:none;">← Library</a>
+        {session.gitBranch && <><span>·</span><span class="font-mono-w">{session.gitBranch}</span></>}
+      </div>
+      <h1 class="font-serif text-[24px] font-semibold leading-tight" style="color:var(--text); max-width:62ch;">{title}</h1>
+      <div class="flex items-center gap-4 mt-3 text-[12.5px] flex-wrap" style="color:var(--text-dim);">
+        <span>{session.messageCount.toLocaleString()} messages</span>
+        {session.compactCount > 0 && <span style="color:var(--c-orange);">⊟ {session.compactCount} compacts</span>}
+        {noiseCount > 0 && <span style="color:var(--text-faint);">{noiseCount} hidden</span>}
+        <span>{formatTimestamp(session.startedAt)} → {formatTimestamp(session.lastActivity)}</span>
+        <button id="resume-btn" class="resume">▶ Resume session</button>
+      </div>
+    </header>
+
+    <div class="convo" id="convo">
+      {blocks.map((b) => (
+        b.t === "user" || b.t === "assistant" ? (
+          <div class={`turn ${b.t}`} id={`m${b.lineNo}`}>
+            <div class={`role ${b.t}`}>{b.t === "user" ? "● You" : "✦ Claude"}</div>
+            <div class="bubble prose-warm" set:html={b.html}></div>
+          </div>
+        ) : b.t === "compact" ? (
+          <div class="compact-divider" id={`m${b.lineNo}`}><span>⊟ Compact #{b.n}</span></div>
+        ) : b.t === "tool-use" ? (
+          <div class="toolchip"><span class="tn">{b.text}</span></div>
+        ) : b.t === "tool-result" ? (
+          <div class="toolchip result"><span>↳ {b.text}</span></div>
+        ) : b.t === "attachment" ? (
+          <div class="toolchip"><span>📎 {b.text}</span></div>
+        ) : b.t === "sidechain" ? (
+          <div class="sidechain prose-warm" set:html={b.html}></div>
+        ) : null
+      ))}
+    </div>
+
+    {landmarks.length > 1 && (
+      <div class="mini">
+        {landmarks.map((l) => (
+          <a href={`#m${l.lineNo}`} class={`m ${l.t === "compact" ? "c" : "u"}`} title={l.t === "compact" ? "compact" : "user turn"}></a>
+        ))}
+      </div>
+    )}
+
+    <dialog id="resume-dialog" class="resume-dialog">
+      <div class="text-[13px] mb-2" style="color:var(--text-dim);">Run this to resume in the original working directory:</div>
+      <pre class="resume-pre">{resumeCmd}</pre>
+      <div class="flex gap-2 mt-3 justify-end">
+        <button id="resume-copy" class="resume-secondary">Copy</button>
+        <button id="resume-close" class="resume-secondary">Close</button>
+      </div>
+    </dialog>
+  </div>
+)}
+
+<style>
+  .reader-wrap { position:relative; }
+  .convo { padding:24px 28px 80px; }
+  .turn { margin-bottom:22px; max-width:74ch; }
+  .role { font-size:11px; letter-spacing:.08em; text-transform:uppercase; font-weight:700; margin-bottom:7px; }
+  .role.user { color:var(--amber); }
+  .role.assistant { color:var(--violet); }
+  .bubble { border-radius:12px; padding:14px 16px; font-size:14px; line-height:1.6; color:#ddd6c6; background:var(--panel); border:1px solid var(--border-soft); }
+  .turn.user .bubble { background:var(--panel-2); border-color:var(--border); }
+  .toolchip { display:inline-flex; align-items:center; gap:7px; background:var(--canvas); border:1px solid var(--border-soft); border-radius:8px; padding:6px 11px; font-family:var(--mono); font-size:12px; color:var(--text-dim); margin:0 0 14px; max-width:74ch; overflow:hidden; }
+  .toolchip .tn { color:var(--c-green); }
+  .toolchip.result { color:var(--text-faint); }
+  .compact-divider { display:flex; align-items:center; gap:10px; margin:18px 0 22px; color:var(--c-orange); font-size:12px; font-family:var(--mono); }
+  .compact-divider::before, .compact-divider::after { content:""; flex:1; height:1px; background:var(--border); }
+  .sidechain { opacity:.7; border-left:2px solid var(--border); padding-left:12px; margin-bottom:18px; max-width:74ch; font-size:13px; }
+  .resume { background:linear-gradient(135deg,var(--amber),var(--c-orange)); color:#241f17; font-weight:600; border:none; border-radius:9px; padding:7px 15px; font-size:13px; cursor:pointer; }
+  .resume-dialog { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:12px; padding:18px 20px; max-width:560px; }
+  .resume-dialog::backdrop { background:rgba(0,0,0,.6); }
+  .resume-pre { background:#161412; border:1px solid var(--border-soft); border-radius:9px; padding:12px 14px; font-family:var(--mono); font-size:12.5px; color:var(--amber-bright); white-space:pre-wrap; word-break:break-all; }
+  .resume-secondary { background:var(--raise); color:var(--text-dim); border:1px solid var(--border); border-radius:7px; padding:5px 12px; font-size:12.5px; cursor:pointer; }
+  /* warm markdown */
+  .prose-warm :global(p) { margin:0 0 10px; }
+  .prose-warm :global(p:last-child) { margin-bottom:0; }
+  .prose-warm :global(pre) { background:#161412; border:1px solid var(--border-soft); border-radius:9px; padding:12px 14px; font-family:var(--mono); font-size:12.5px; color:#b9d9b4; overflow-x:auto; white-space:pre-wrap; word-break:break-word; margin:10px 0; }
+  .prose-warm :global(code) { font-family:var(--mono); font-size:12.5px; background:var(--canvas); padding:1px 5px; border-radius:4px; color:var(--amber-bright); }
+  .prose-warm :global(pre code) { background:none; padding:0; color:inherit; }
+  .prose-warm :global(a) { color:var(--amber); }
+  .prose-warm :global(ul), .prose-warm :global(ol) { margin:0 0 10px; padding-left:22px; }
+  .prose-warm :global(h1), .prose-warm :global(h2), .prose-warm :global(h3) { font-family:var(--serif); color:var(--text); margin:14px 0 8px; }
+  .mini { position:absolute; right:8px; top:96px; bottom:20px; width:8px; display:flex; flex-direction:column; gap:3px; align-items:center; }
+  .mini .m { width:5px; height:8px; border-radius:3px; background:var(--border); display:block; }
+  .mini .m.u { background:var(--amber); width:8px; }
+  .mini .m.c { background:var(--c-orange); width:8px; }
+</style>
+
+<script is:inline define:vars={{ resumeCmd }}>
+  const btn = document.getElementById("resume-btn");
+  const dlg = document.getElementById("resume-dialog");
+  if (btn && dlg) {
+    btn.addEventListener("click", () => dlg.showModal());
+    document.getElementById("resume-close")?.addEventListener("click", () => dlg.close());
+    document.getElementById("resume-copy")?.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(resumeCmd); } catch {}
+    });
+  }
+</script>
