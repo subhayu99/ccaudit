@@ -1,0 +1,43 @@
+---
+// src/components/SessionListPane.astro
+import type { GroupedList } from "../db/library";
+import { formatTimestamp } from "../lib/render";
+interface Props { data: GroupedList; activeSession?: string; }
+const { data, activeSession } = Astro.props;
+---
+<div class="px-[18px] pt-4 pb-3" style="border-bottom:1px solid var(--border-soft);">
+  {data.header.subtitle && <div class="text-[12px] font-mono-w" style="color:var(--text-faint);">{data.header.subtitle}</div>}
+  <h2 class="font-serif text-[21px] font-semibold flex items-center gap-2" style="color:var(--text);">{data.header.title}</h2>
+</div>
+<div class="overflow-y-auto flex-1 px-2.5 pb-5">
+  {data.groups.length === 0 && (
+    <p class="px-3 py-8 text-center text-[13px]" style="color:var(--text-faint);">No sessions here.</p>
+  )}
+  {data.groups.map((g) => (
+    <>
+      <div class="text-[11px] tracking-wider uppercase px-2.5 pt-3.5 pb-1.5 font-semibold" style="color:var(--text-faint);">{g.label}</div>
+      {g.items.map((it) => (
+        <a href={`/?session=${it.id}`} class="card" data-active={it.id === activeSession}>
+          <div class="ct-title">{it.title}</div>
+          <div class="ct-meta">
+            <span class="badge wd">{it.workdirLabel}</span>
+            <span>{it.messageCount.toLocaleString()} msgs</span>
+            {it.compactCount > 0 && <span class="badge cmp">{it.compactCount} compact</span>}
+            <span class="ml-auto">{formatTimestamp(it.lastActivity)}</span>
+          </div>
+        </a>
+      ))}
+    </>
+  ))}
+</div>
+
+<style>
+  .card { display:block; padding:11px 12px; border-radius:10px; cursor:pointer; border:1px solid transparent; text-decoration:none; }
+  .card:hover { background:var(--panel); }
+  .card[data-active="true"] { background:var(--panel); border-color:var(--border); }
+  .ct-title { font-size:13.5px; color:var(--text); font-weight:500; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; line-height:1.4; }
+  .ct-meta { display:flex; align-items:center; gap:8px; margin-top:7px; font-size:11.5px; color:var(--text-faint); }
+  .badge { display:inline-flex; align-items:center; gap:4px; padding:1px 7px; border-radius:12px; font-size:10.5px; font-family:var(--mono); }
+  .badge.wd { background:rgba(155,130,214,.14); color:#b6a2e0; }
+  .badge.cmp { background:rgba(207,138,74,.16); color:#e0a368; }
+</style>

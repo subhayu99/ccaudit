@@ -1,78 +1,55 @@
 ---
-import Base from "../layouts/Base.astro";
-import SessionRow from "../components/SessionRow.astro";
+import AppShell from "../layouts/AppShell.astro";
+import Sidebar from "../components/Sidebar.astro";
+import SessionListPane from "../components/SessionListPane.astro";
 import { openDb } from "../db/init";
-import { listSessions } from "../db/sessions";
+import { getLibraryTree, listSessionsGrouped, type Selection } from "../db/library";
 import { getIndexStats } from "../db/stats";
-import { formatTimestamp } from "../lib/render";
 import { INDEX_DB_PATH } from "../paths";
 
-const projectFilter = Astro.url.searchParams.get("project") ?? undefined;
+const url = Astro.url;
+const repo = url.searchParams.get("repo") ?? undefined;
+const workdir = url.searchParams.get("workdir") ?? undefined;
+const mode = (url.searchParams.get("mode") as "recent" | "all" | null) ?? undefined;
+const session = url.searchParams.get("session") ?? undefined;
+
+const sel: Selection = repo ? { repo } : workdir ? { workdir } : { mode: mode ?? "recent" };
 
 const db = openDb(INDEX_DB_PATH);
-const sessions = listSessions(db, { limit: 200, projectDir: projectFilter });
+const tree = getLibraryTree(db);
+const list = listSessionsGrouped(db, sel, Date.now());
 const stats = getIndexStats(db);
 db.close();
-
-const pageTitle = projectFilter
-  ? `ccaudit — ${projectFilter.split("/").filter(Boolean).slice(-2).join("/")}`
-  : "ccaudit — sessions";
 ---
-<Base title={pageTitle}>
-  <div class="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
-    <div class="bg-white rounded-lg border border-slate-200 p-4 text-center">
-      <div class="text-2xl font-bold text-slate-900">{stats.totalSessions}</div>
-      <div class="text-xs text-slate-500 uppercase mt-1">Sessions</div>
-    </div>
-    <div class="bg-white rounded-lg border border-slate-200 p-4 text-center">
-      <div class="text-2xl font-bold text-slate-900">{stats.totalMessages.toLocaleString()}</div>
-      <div class="text-xs text-slate-500 uppercase mt-1">Messages</div>
-    </div>
-    <div class="bg-white rounded-lg border border-slate-200 p-4 text-center">
-      <div class="text-2xl font-bold text-amber-700">{stats.sessionsWithCompacts}</div>
-      <div class="text-xs text-slate-500 uppercase mt-1">With compacts</div>
-    </div>
-    <div class="bg-white rounded-lg border border-slate-200 p-4 text-center">
-      <div class="text-sm font-mono text-slate-700">{formatTimestamp(stats.oldestSession)}</div>
-      <div class="text-xs text-slate-500 uppercase mt-1">Oldest</div>
-    </div>
-    <div class="bg-white rounded-lg border border-slate-200 p-4 text-center">
-      <div class="text-sm font-mono text-slate-700">{formatTimestamp(stats.newestSession)}</div>
-      <div class="text-xs text-slate-500 uppercase mt-1">Newest</div>
-    </div>
+<AppShell title="ccaudit">
+  <Sidebar slot="sidebar" tree={tree} activeRepo={repo} activeWorkdir={workdir} mode={mode} />
+  <SessionListPane slot="list" data={list} activeSession={session} />
+  <div slot="reader" class="p-8">
+    {session ? (
+      <div class="max-w-prose">
+        <p class="text-[13px]" style="color:var(--text-dim);">Opening the full reader…</p>
+        <a class="underline" style="color:var(--amber);" href={`/s/${session}`}>View session {session.slice(0,8)} →</a>
+        <script is:inline set:html={`location.href='/s/${session}'`}></script>
+      </div>
+    ) : (
+      <div>
+        <h2 class="font-serif text-[26px] font-semibold mb-1" style="color:var(--text);">Your Claude history</h2>
+        <p class="text-[14px] mb-6" style="color:var(--text-dim);">Pick a repository or session on the left to start reading.</p>
+        <div class="flex gap-3 flex-wrap">
+          <div class="rounded-xl px-5 py-4" style="background:var(--panel); border:1px solid var(--border-soft);">
+            <div class="font-serif text-[28px]" style="color:var(--text);">{stats.totalSessions}</div>
+            <div class="text-[12px] uppercase tracking-wider" style="color:var(--text-faint);">sessions</div>
+          </div>
+          <div class="rounded-xl px-5 py-4" style="background:var(--panel); border:1px solid var(--border-soft);">
+            <div class="font-serif text-[28px]" style="color:var(--text);">{stats.totalMessages.toLocaleString()}</div>
+            <div class="text-[12px] uppercase tracking-wider" style="color:var(--text-faint);">messages</div>
+          </div>
+          <div class="rounded-xl px-5 py-4" style="background:var(--panel); border:1px solid var(--border-soft);">
+            <div class="font-serif text-[28px]" style="color:var(--c-orange);">{stats.sessionsWithCompacts}</div>
+            <div class="text-[12px] uppercase tracking-wider" style="color:var(--text-faint);">with compacts</div>
+          </div>
+        </div>
+      </div>
+    )}
   </div>
-  {projectFilter ? (
-    <div class="flex items-center gap-3 mb-4">
-      <h1 class="text-2xl font-bold">Sessions</h1>
-      <span class="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded-full">
-        {projectFilter.split("/").filter(Boolean).slice(-2).join("/")}
-      </span>
-      <a href="/" class="text-sm text-slate-500 hover:text-slate-800 hover:underline">× Clear filter</a>
-    </div>
-  ) : (
-    <h1 class="text-2xl font-bold mb-4">Sessions</h1>
-  )}
-  {sessions.length === 0 ? (
-    <p class="text-slate-500">
-      No sessions indexed yet. Run <code class="bg-slate-200 px-1 rounded">ccaudit reindex</code> in a terminal.
-    </p>
-  ) : (
-    <div class="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-      <table class="w-full text-sm">
-        <thead class="bg-slate-100 text-slate-600 text-xs uppercase">
-          <tr>
-            <th class="px-3 py-2 text-left font-medium">Last activity</th>
-            <th class="px-3 py-2 text-left font-medium">Session</th>
-            <th class="px-3 py-2 text-left font-medium">Project</th>
-            <th class="px-3 py-2 text-right font-medium">Msgs</th>
-            <th class="px-3 py-2 text-right font-medium">Compacts</th>
-            <th class="px-3 py-2 text-left font-medium">First prompt</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sessions.map((s) => <SessionRow session={s} />)}
-        </tbody>
-      </table>
-    </div>
-  )}
-</Base>
+</AppShell>

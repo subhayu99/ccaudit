@@ -1,0 +1,69 @@
+---
+// src/components/Sidebar.astro
+import type { LibraryTree } from "../db/library";
+interface Props { tree: LibraryTree; activeRepo?: string; activeWorkdir?: string; mode?: string; }
+const { tree, activeRepo, activeWorkdir, mode } = Astro.props;
+---
+<div class="flex flex-col h-full" style="color:var(--text-dim);">
+  <div class="flex items-center gap-2 px-4 pt-4 pb-3">
+    <div class="w-[22px] h-[22px] rounded-md grid place-items-center font-bold text-[13px]"
+         style="background:linear-gradient(135deg,var(--amber),var(--c-orange)); color:#241f17;">c</div>
+    <h1 class="font-serif text-[18px] font-semibold" style="color:var(--text);">ccaudit</h1>
+  </div>
+  <a href="/search" class="mx-3 mb-3 flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px]"
+     style="background:var(--canvas); border:1px solid var(--border); color:var(--text-faint); text-decoration:none;">
+    <span>⚲</span><span>Search history…</span>
+    <span class="ml-auto font-mono-w text-[11px] px-1.5 rounded" style="background:var(--raise); border:1px solid var(--border);">⌘K</span>
+  </a>
+  <nav class="px-2 overflow-y-auto flex-1">
+    <div class="text-[10.5px] tracking-wider uppercase px-2.5 pt-3 pb-1.5 font-semibold" style="color:var(--text-faint);">Library</div>
+    <a href="/?mode=recent" class="lib-item" data-active={mode === "recent"}>◷ Recent</a>
+    <a href="/?mode=all" class="lib-item" data-active={mode === "all"}>✦ All sessions <span class="ml-auto text-[11px]">{tree.totalCount}</span></a>
+    <a href="/graph?view=repos" class="lib-item">⌗ Graph view</a>
+    <a href="/analytics" class="lib-item">▦ Analytics</a>
+
+    <div class="text-[10.5px] tracking-wider uppercase px-2.5 pt-3.5 pb-1.5 font-semibold" style="color:var(--text-faint);">Repositories</div>
+    {tree.repos.map((repo) => (
+      <div class="repo-group" data-open={repo.repoId === activeRepo}>
+        <a href={`/?repo=${encodeURIComponent(repo.repoId)}`} class="lib-item" data-active={repo.repoId === activeRepo}>
+          <button class="caret" aria-label="toggle">›</button>
+          <span class="w-2 h-2 rounded-full inline-block" style="background:var(--c-green);"></span>
+          <span class="truncate">{repo.displayName}</span>
+          <span class="ml-auto text-[11px]">{repo.sessionCount}</span>
+        </a>
+        <div class="children">
+          {repo.workdirs.map((w) => (
+            <a href={`/?workdir=${encodeURIComponent(w.path)}`}
+               class="lib-item child" data-active={w.path === activeWorkdir} style={w.existsOnDisk ? "" : "opacity:.5;"}>
+              <span class="w-1.5 h-1.5 rounded-full inline-block" style={`background:${w.existsOnDisk ? "var(--violet)" : "var(--text-faint)"};`}></span>
+              <span class="truncate">{w.label}{w.existsOnDisk ? "" : " · deleted"}</span>
+              <span class="ml-auto text-[11px]">{w.sessionCount}</span>
+            </a>
+          ))}
+        </div>
+      </div>
+    ))}
+  </nav>
+</div>
+
+<style>
+  .lib-item { display:flex; align-items:center; gap:9px; padding:6px 10px; border-radius:7px; cursor:pointer; white-space:nowrap; font-size:14px; color:var(--text-dim); text-decoration:none; }
+  .lib-item:hover { background:var(--panel-2); color:var(--text); }
+  .lib-item[data-active="true"] { background:var(--raise); color:var(--text); }
+  .lib-item.child { padding-left:30px; font-size:13px; }
+  .caret { background:none; border:none; color:var(--text-faint); width:10px; cursor:pointer; transition:transform .15s; padding:0; }
+  .repo-group[data-open="true"] .caret { transform:rotate(90deg); }
+  .children { display:none; }
+  .repo-group[data-open="true"] .children { display:block; }
+</style>
+
+<script>
+  // Collapse/expand without navigating when the caret is clicked.
+  document.querySelectorAll(".caret").forEach((c) => {
+    c.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const group = (e.currentTarget as HTMLElement).closest(".repo-group") as HTMLElement;
+      group.dataset.open = group.dataset.open === "true" ? "false" : "true";
+    });
+  });
+</script>
