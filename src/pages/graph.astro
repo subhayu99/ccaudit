@@ -12,8 +12,10 @@ const folderCount = graph.nodes.filter((n) => n.type === "folder").length;
 const projectCount = graph.nodes.filter((n) => n.type === "project").length;
 const sessionCount = graph.nodes.filter((n) => n.type === "session").length;
 
-// Escape `<` so the JSON can't break out of the <script> tag.
-const graphJson = JSON.stringify(graph).replace(/</g, "\\u003c");
+// Passed to the client via a hidden element's data-* attribute (Astro escapes it).
+// Avoids a <script type="application/json"> tag, which Vite's dev dependency
+// scanner mis-parses (it inlines the frontmatter and chokes).
+const graphJson = JSON.stringify(graph);
 ---
 <Base title="ccaudit — graph">
   <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -66,7 +68,7 @@ const graphJson = JSON.stringify(graph).replace(/</g, "\\u003c");
     </button>
   </div>
 
-  <script type="application/json" id="graph-data" set:html={graphJson}></script>
+  <div id="graph-data" data-graph={graphJson} hidden></div>
 
   <script>
     // @ts-nocheck — client-side d3 viz glue; types relaxed for brevity.
@@ -75,7 +77,7 @@ const graphJson = JSON.stringify(graph).replace(/</g, "\\u003c");
     import { zoom, zoomIdentity } from "d3-zoom";
     import { drag } from "d3-drag";
 
-    const data = JSON.parse(document.getElementById("graph-data").textContent);
+    const data = JSON.parse(document.getElementById("graph-data").dataset.graph);
     const container = document.getElementById("graph-container");
     const svgEl = document.getElementById("graph-svg");
     const tooltip = document.getElementById("graph-tooltip");
