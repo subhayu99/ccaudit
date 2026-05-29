@@ -3,7 +3,7 @@ import Base from "../../layouts/Base.astro";
 import { openDb } from "../../db/init";
 import { getSession } from "../../db/sessions";
 import { getSessionMessages } from "../../db/messages";
-import { formatTimestamp, shortSessionId } from "../../lib/render";
+import { formatTimestamp, shortSessionId, truncate } from "../../lib/render";
 import { INDEX_DB_PATH } from "../../paths";
 import MessageUser from "../../components/MessageUser.astro";
 import MessageAssistant from "../../components/MessageAssistant.astro";
@@ -38,6 +38,16 @@ for (const m of messages) {
   if (m.isCompactSummary) {
     compactN += 1;
     compactIndex.set(m.lineNo, compactN);
+  }
+}
+
+type Landmark = { lineNo: number; kind: "user" | "compact"; label: string };
+const landmarks: Landmark[] = [];
+for (const { m, kind } of classified) {
+  if (kind === "user-text") {
+    landmarks.push({ lineNo: m.lineNo, kind: "user", label: truncate(m.textContent ?? "", 42) });
+  } else if (kind === "compact-summary") {
+    landmarks.push({ lineNo: m.lineNo, kind: "compact", label: `Compact #${compactIndex.get(m.lineNo) ?? 0}` });
   }
 }
 
@@ -132,30 +142,51 @@ const title = session.aiTitle ?? session.firstPrompt ?? `Session ${shortSessionI
     });
   </script>
 
-  <div id="messages" class="space-y-3">
-    {classified.map(({ m, kind }) => (
-      <div id={`line-${m.lineNo}`} data-kind={kind}>
-        {kind === "compact-summary" ? (
-          <CompactWaypoint message={m} index={compactIndex.get(m.lineNo) ?? 0} />
-        ) : kind === "sidechain" ? (
-          <SidechainBlock message={m} />
-        ) : kind === "user-text" ? (
-          <MessageUser message={m} />
-        ) : kind === "assistant-text" ? (
-          <MessageAssistant message={m} />
-        ) : kind === "tool-use" ? (
-          <ToolUseChip message={m} />
-        ) : kind === "tool-result" ? (
-          <ToolResultChip message={m} />
-        ) : kind === "attachment" ? (
-          <AttachmentChip message={m} />
-        ) : (
-          <div class="px-2 py-0.5 text-xs text-slate-400 dark:text-slate-600 font-mono">
-            line {m.lineNo} · {m.type}
-          </div>
-        )}
-      </div>
-    ))}
+  <div class="flex gap-6 items-start">
+    <!-- Minimap rail: sticky, hidden on small screens -->
+    <nav class="hidden lg:block sticky top-6 w-56 flex-shrink-0 max-h-[80vh] overflow-y-auto text-sm" aria-label="Session timeline">
+      <div class="text-xs uppercase text-slate-400 font-semibold mb-2 px-2">Timeline</div>
+      <ol class="space-y-0.5">
+        {landmarks.map((lm) => (
+          <li>
+            <a
+              href={`#line-${lm.lineNo}`}
+              class={`block px-2 py-1 rounded truncate hover:bg-slate-100 ${lm.kind === "compact" ? "text-amber-700 font-medium" : "text-slate-600"}`}
+              title={lm.label}
+            >
+              {lm.kind === "compact" ? "🗜 " : ""}{lm.label}
+            </a>
+          </li>
+        ))}
+      </ol>
+    </nav>
+
+    <!-- Messages column -->
+    <div id="messages" class="space-y-3 flex-1 min-w-0">
+      {classified.map(({ m, kind }) => (
+        <div id={`line-${m.lineNo}`} data-kind={kind}>
+          {kind === "compact-summary" ? (
+            <CompactWaypoint message={m} index={compactIndex.get(m.lineNo) ?? 0} />
+          ) : kind === "sidechain" ? (
+            <SidechainBlock message={m} />
+          ) : kind === "user-text" ? (
+            <MessageUser message={m} />
+          ) : kind === "assistant-text" ? (
+            <MessageAssistant message={m} />
+          ) : kind === "tool-use" ? (
+            <ToolUseChip message={m} />
+          ) : kind === "tool-result" ? (
+            <ToolResultChip message={m} />
+          ) : kind === "attachment" ? (
+            <AttachmentChip message={m} />
+          ) : (
+            <div class="px-2 py-0.5 text-xs text-slate-400 dark:text-slate-600 font-mono">
+              line {m.lineNo} · {m.type}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   </div>
 
   <style is:global>
@@ -166,6 +197,9 @@ const title = session.aiTitle ?? session.firstPrompt ?? `Session ${shortSessionI
     #messages.turns-only [data-kind="tool-result"],
     #messages.turns-only [data-kind="attachment"],
     #messages.turns-only [data-kind="noise"] { display: none; }
+    /* Smooth scrolling + anchor offset so landmarks land below the header */
+    html { scroll-behavior: smooth; }
+    #messages > div[id^="line-"] { scroll-margin-top: 1rem; }
   </style>
 
   <script>
@@ -174,5 +208,26 @@ const title = session.aiTitle ?? session.firstPrompt ?? `Session ${shortSessionI
     const system = document.getElementById("toggle-system") as HTMLInputElement | null;
     turns?.addEventListener("change", () => msgs?.classList.toggle("turns-only", turns.checked));
     system?.addEventListener("change", () => msgs?.classList.toggle("show-system", system.checked));
+  </script>
+
+  <script>
+    // @ts-nocheck — client-side minimap highlight glue; types relaxed for brevity.
+    // Highlight nearest landmark on scroll using IntersectionObserver.
+    const links = Array.from(document.querySelectorAll('nav[aria-label="Session timeline"] a'));
+    if (links.length > 0) {
+      const byLine = new Map(links.map((a) => [a.getAttribute("href"), a]));
+      const obs = new IntersectionObserver((entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            const link = byLine.get("#" + e.target.id);
+            if (link) {
+              links.forEach((l) => l.classList.remove("bg-slate-200", "dark:bg-slate-700"));
+              link.classList.add("bg-slate-200", "dark:bg-slate-700");
+            }
+          }
+        }
+      }, { rootMargin: "-10% 0px -80% 0px" });
+      document.querySelectorAll('#messages > div[id^="line-"]').forEach((el) => obs.observe(el));
+    }
   </script>
 </Base>
