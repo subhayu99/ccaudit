@@ -1,7 +1,17 @@
 # Repo Identity Resolution — Design (first-principles)
 
 **Date:** 2026-05-29
-**Status:** Design captured; not yet implemented.
+**Status:** Layer 1 (deterministic) implemented & verified 2026-05-29. Layer 2 (inference for deleted dirs) deferred.
+
+## Layer 1 — implemented
+
+- `src/identity/remote.ts` — `normalizeRemote()` (credential-stripping → `host/org/repo`).
+- `src/identity/resolve.ts` — `resolveIdentity(cwd, {existsOnDisk})` with an injectable git runner.
+- `src/identity/components.ts` — `computeRepoComponents()` union-find over shared commit tokens (remote as secondary edge).
+- `src/db/workdirs.ts` + `workdirs`/`workdir_tokens` tables; captured at index time per distinct `cwd` via `src/indexer/resolve-workdirs.ts` (idempotent, only while dir exists).
+- `src/db/repo-graph.ts` `getRepoGraphData()` + a "Repos" toggle on `/graph` (`?view=repos`): Repo → Workdir → Session; session nodes carry exact `cwd` for resume.
+
+Verified on real data: 63 workdirs → 35 repos; 8 multi-workdir clusters correctly collapsed (truroi-ops×7, vellaris/ingestion×6, backend/drift×5…); 0 credential leaks in stored remotes; deleted worktrees correctly remain unmerged singletons (the information-theoretic limit, not a bug). 35 identity tests, 101 total passing.
 
 ## The problem
 
