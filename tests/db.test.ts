@@ -15,6 +15,7 @@ import type { MessageRow } from "../src/types.js";
 import { addTag, removeTag, getSessionTags, getSessionsByTag } from "../src/db/tags.js";
 import { getGraphData } from "../src/db/graph.js";
 import { getIndexStats } from "../src/db/stats.js";
+import { getActivityByDay, getToolUsage } from "../src/db/analytics.js";
 
 describe("db/init", () => {
   let tmp: string;
@@ -297,6 +298,57 @@ describe("db/stats", () => {
     expect(stats.sessionsWithCompacts).toBe(2);
     expect(stats.oldestSession).toBe(500);
     expect(stats.newestSession).toBe(3000);
+  });
+});
+
+describe("db/analytics", () => {
+  let tmp: string;
+  let db: ReturnType<typeof openDb>;
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "ccaudit-test-"));
+    db = openDb(join(tmp, "test.db"));
+  });
+  afterEach(() => { db.close(); rmSync(tmp, { recursive: true, force: true }); });
+
+  const sess = (id: string, lastActivity: number, msgs: number): Session => ({
+    id, projectDir: "/p", projectLabel: "p", filePath: `/p/${id}.jsonl`,
+    fileMtime: 0, fileSize: 0, startedAt: lastActivity, lastActivity,
+    gitBranch: null, messageCount: msgs, userMsgCount: 0, compactCount: 0,
+    firstPrompt: null, aiTitle: null, cwd: null, indexedAt: 0,
+  });
+
+  it("getActivityByDay groups sessions by local calendar day", () => {
+    // 2026-05-23T10:00:00Z and 2026-05-23T20:00:00Z -> same or adjacent local day
+    const may23 = Date.parse("2026-05-23T10:00:00Z");
+    upsertSession(db, sess("a", may23, 100));
+    upsertSession(db, sess("b", may23 + 3600_000, 50));
+    const activity = getActivityByDay(db);
+    expect(activity.length).toBeGreaterThanOrEqual(1);
+    const total = activity.reduce((s, d) => s + d.sessions, 0);
+    expect(total).toBe(2);
+    const totalMsgs = activity.reduce((s, d) => s + d.messages, 0);
+    expect(totalMsgs).toBe(150);
+  });
+
+  it("getToolUsage counts tool_use blocks by name across assistant messages", () => {
+    upsertSession(db, sess("s1", 1000, 0));
+    insertMessages(db, [
+      { sessionId: "s1", lineNo: 1, uuid: null, parentUuid: null, type: "assistant", role: "assistant",
+        isSidechain: false, isCompactSummary: false, timestamp: null, textContent: null,
+        rawJson: JSON.stringify({ message: { content: [{ type: "tool_use", name: "Bash" }, { type: "tool_use", name: "Read" }] } }) },
+      { sessionId: "s1", lineNo: 2, uuid: null, parentUuid: null, type: "assistant", role: "assistant",
+        isSidechain: false, isCompactSummary: false, timestamp: null, textContent: null,
+        rawJson: JSON.stringify({ message: { content: [{ type: "tool_use", name: "Bash" }] } }) },
+      { sessionId: "s1", lineNo: 3, uuid: null, parentUuid: null, type: "user", role: "user",
+        isSidechain: false, isCompactSummary: false, timestamp: null, textContent: "hi", rawJson: "{}" },
+    ]);
+    const usage = getToolUsage(db);
+    const bash = usage.find((u) => u.tool === "Bash");
+    const read = usage.find((u) => u.tool === "Read");
+    expect(bash!.count).toBe(2);
+    expect(read!.count).toBe(1);
+    // sorted desc
+    expect(usage[0]!.tool).toBe("Bash");
   });
 });
 

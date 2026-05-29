@@ -1,0 +1,101 @@
+---
+import Base from "../layouts/Base.astro";
+import { openDb } from "../db/init";
+import { getActivityByDay, getToolUsage } from "../db/analytics";
+import { INDEX_DB_PATH } from "../paths";
+
+const db = openDb(INDEX_DB_PATH);
+const activity = getActivityByDay(db);
+const tools = getToolUsage(db);
+db.close();
+
+// Build a date->messages map for quick lookup
+const byDay = new Map(activity.map((d) => [d.day, d]));
+
+// Build a continuous range of days from first activity to today (or last activity).
+function ymd(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+const days: { day: string; messages: number; sessions: number }[] = [];
+if (activity.length > 0) {
+  const first = new Date(activity[0]!.day + "T00:00:00");
+  const last = new Date(activity[activity.length - 1]!.day + "T00:00:00");
+  // Pad start back to the preceding Sunday so weeks align
+  const start = new Date(first);
+  start.setDate(start.getDate() - start.getDay());
+  for (let d = new Date(start); d <= last; d.setDate(d.getDate() + 1)) {
+    const key = ymd(d);
+    const hit = byDay.get(key);
+    days.push({ day: key, messages: hit?.messages ?? 0, sessions: hit?.sessions ?? 0 });
+  }
+}
+
+// Bucket message counts into intensity 0..4
+const maxMsgs = Math.max(1, ...days.map((d) => d.messages));
+function intensity(m: number): number {
+  if (m === 0) return 0;
+  const r = m / maxMsgs;
+  if (r > 0.66) return 4;
+  if (r > 0.33) return 3;
+  if (r > 0.1) return 2;
+  return 1;
+}
+const cellColor = ["bg-slate-100", "bg-green-200", "bg-green-300", "bg-green-500", "bg-green-700"];
+
+// Chunk days into weeks (columns of 7)
+const weeks: typeof days[] = [];
+for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
+
+const maxToolCount = Math.max(1, ...tools.map((t) => t.count));
+const totalToolCalls = tools.reduce((s, t) => s + t.count, 0);
+---
+<Base title="ccaudit — analytics">
+  <h1 class="text-2xl font-bold mb-6">Analytics</h1>
+
+  <section class="mb-10">
+    <h2 class="text-lg font-semibold mb-3">Activity</h2>
+    {days.length === 0 ? (
+      <p class="text-slate-500">No activity yet.</p>
+    ) : (
+      <div class="bg-white rounded-lg border border-slate-200 p-4 overflow-x-auto">
+        <div class="flex gap-1">
+          {weeks.map((week) => (
+            <div class="flex flex-col gap-1">
+              {week.map((d) => (
+                <div
+                  class={`w-3 h-3 rounded-sm ${cellColor[intensity(d.messages)]}`}
+                  title={`${d.day}: ${d.sessions} session${d.sessions === 1 ? "" : "s"}, ${d.messages} messages`}
+                ></div>
+              ))}
+            </div>
+          ))}
+        </div>
+        <div class="flex items-center gap-2 mt-3 text-xs text-slate-500">
+          <span>Less</span>
+          {cellColor.map((c) => <span class={`w-3 h-3 rounded-sm ${c}`}></span>)}
+          <span>More</span>
+        </div>
+      </div>
+    )}
+  </section>
+
+  <section>
+    <h2 class="text-lg font-semibold mb-3">Tool usage <span class="text-slate-400 text-sm font-normal">({totalToolCalls.toLocaleString()} calls)</span></h2>
+    {tools.length === 0 ? (
+      <p class="text-slate-500">No tool calls recorded.</p>
+    ) : (
+      <div class="bg-white rounded-lg border border-slate-200 p-4 space-y-2">
+        {tools.slice(0, 20).map((t) => (
+          <div class="flex items-center gap-3 text-sm">
+            <span class="w-32 truncate font-mono text-slate-700 flex-shrink-0">{t.tool}</span>
+            <div class="flex-1 bg-slate-100 rounded h-5 overflow-hidden">
+              <div class="bg-blue-500 h-5 rounded" style={`width: ${(t.count / maxToolCount) * 100}%`}></div>
+            </div>
+            <span class="w-16 text-right tabular-nums text-slate-600 flex-shrink-0">{t.count.toLocaleString()}</span>
+          </div>
+        ))}
+      </div>
+    )}
+  </section>
+</Base>
