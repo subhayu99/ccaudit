@@ -1,6 +1,27 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+/* --- warm-obsidian design system (dark-first) ---
+   Scoped to the new AppShell via CSS variables; AppShell paints its own
+   surfaces with these. We deliberately do NOT set a global html/body
+   background here, so the not-yet-migrated pages keep their existing theme. */
+:root {
+  --canvas:#1b1916; --panel:#211e19; --panel-2:#26221b; --raise:#2d2820;
+  --border:#37312a; --border-soft:#2b2620;
+  --text:#ece5d6; --text-dim:#a39a87; --text-faint:#6f685b;
+  --amber:#d2a85f; --amber-bright:#e6bd76; --violet:#9b82d6;
+  --c-green:#7fae7a; --c-orange:#cf8a4a; --c-blue:#6fa1d8;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,monospace;
+}
+html.theme-light {
+  --canvas:#f5f1e8; --panel:#efe9dc; --panel-2:#e9e2d2; --raise:#e2dac8;
+  --border:#d8cfba; --border-soft:#e2dac8;
+  --text:#2c281f; --text-dim:#6b6452; --text-faint:#9a917d;
+}
+.font-serif { font-family:var(--serif); }
+.font-mono-w { font-family:var(--mono); }
+
 /* Keep rendered-markdown code blocks (e.g. pasted JSON blobs) from forcing
    horizontal page overflow. Long lines wrap; very long tokens break. */
 .prose pre {
