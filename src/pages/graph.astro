@@ -2,15 +2,16 @@
 import Base from "../layouts/Base.astro";
 import { openDb } from "../db/init";
 import { getGraphData } from "../db/graph";
+import { getRepoGraphData } from "../db/repo-graph";
 import { INDEX_DB_PATH } from "../paths";
 
+const view = Astro.url.searchParams.get("view") === "repos" ? "repos" : "folders";
+
 const db = openDb(INDEX_DB_PATH);
-const graph = getGraphData(db);
+const graph = view === "repos" ? getRepoGraphData(db) : getGraphData(db);
 db.close();
 
-const folderCount = graph.nodes.filter((n) => n.type === "folder").length;
-const projectCount = graph.nodes.filter((n) => n.type === "project").length;
-const sessionCount = graph.nodes.filter((n) => n.type === "session").length;
+const count = (t: string) => graph.nodes.filter((n) => n.type === t).length;
 
 // Passed to the client via a hidden element's data-* attribute (Astro escapes it).
 // Avoids a <script type="application/json"> tag, which Vite's dev dependency
@@ -21,32 +22,63 @@ const graphJson = JSON.stringify(graph);
   <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
     <h1 class="text-2xl font-bold">Graph</h1>
     <div class="flex items-center gap-4 text-sm text-slate-500">
-      <span class="flex items-center gap-1.5">
-        <span class="inline-block w-3 h-3 rounded-full bg-slate-400"></span> {folderCount} folders
-      </span>
-      <span class="flex items-center gap-1.5">
-        <span class="inline-block w-3 h-3 rounded-full bg-violet-500"></span> {projectCount} projects
-      </span>
-      <span class="flex items-center gap-1.5">
-        <span class="inline-block w-3 h-3 rounded-full bg-blue-500"></span> {sessionCount} sessions
-      </span>
-      <span class="flex items-center gap-1.5">
-        <span class="inline-block w-3 h-3 rounded-full bg-amber-500"></span> compacted
-      </span>
+      {view === "repos" ? (
+        <>
+          <span class="flex items-center gap-1.5">
+            <span class="inline-block w-3 h-3 rounded-full bg-emerald-500"></span> {count("repo")} repos
+          </span>
+          <span class="flex items-center gap-1.5">
+            <span class="inline-block w-3 h-3 rounded-full bg-violet-500"></span> {count("workdir")} workdirs
+          </span>
+          <span class="flex items-center gap-1.5">
+            <span class="inline-block w-3 h-3 rounded-full bg-blue-500"></span> {count("session")} sessions
+          </span>
+          <span class="flex items-center gap-1.5">
+            <span class="inline-block w-3 h-3 rounded-full border border-slate-400 opacity-40"></span> deleted dir
+          </span>
+        </>
+      ) : (
+        <>
+          <span class="flex items-center gap-1.5">
+            <span class="inline-block w-3 h-3 rounded-full bg-slate-400"></span> {count("folder")} folders
+          </span>
+          <span class="flex items-center gap-1.5">
+            <span class="inline-block w-3 h-3 rounded-full bg-violet-500"></span> {count("project")} projects
+          </span>
+          <span class="flex items-center gap-1.5">
+            <span class="inline-block w-3 h-3 rounded-full bg-blue-500"></span> {count("session")} sessions
+          </span>
+          <span class="flex items-center gap-1.5">
+            <span class="inline-block w-3 h-3 rounded-full bg-amber-500"></span> compacted
+          </span>
+        </>
+      )}
     </div>
   </div>
 
   <div class="flex items-center gap-3 mb-3 flex-wrap">
+    <div class="inline-flex rounded-lg border border-slate-300 dark:border-slate-700 overflow-hidden text-sm">
+      <a
+        href="/graph"
+        class:list={["px-3 py-1.5", view === "folders" ? "bg-blue-600 text-white" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"]}
+      >Folders</a>
+      <a
+        href="/graph?view=repos"
+        class:list={["px-3 py-1.5 border-l border-slate-300 dark:border-slate-700", view === "repos" ? "bg-blue-600 text-white" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"]}
+      >Repos</a>
+    </div>
     <input
       id="graph-search"
       type="search"
       placeholder="Highlight nodes…"
       class="px-3 py-1.5 text-sm border border-slate-300 rounded-lg bg-white dark:bg-slate-800 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
     />
-    <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer select-none">
-      <input id="graph-continuations" type="checkbox" class="rounded" />
-      Show session threads
-    </label>
+    {view === "folders" && (
+      <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+        <input id="graph-continuations" type="checkbox" class="rounded" />
+        Show session threads
+      </label>
+    )}
     <span class="text-slate-400 text-sm ml-auto hidden sm:inline">drag · scroll to zoom · click to open</span>
   </div>
 
@@ -87,8 +119,8 @@ const graphJson = JSON.stringify(graph);
 
     const isDark = document.documentElement.classList.contains("dark");
     const C = isDark
-      ? { folder: "#64748b", proj: "#a78bfa", sess: "#60a5fa", sessCompact: "#fbbf24", edge: "#334155", cont: "#34d399", label: "#cbd5e1", folderLabel: "#94a3b8", stroke: "#0f172a" }
-      : { folder: "#94a3b8", proj: "#7c3aed", sess: "#2563eb", sessCompact: "#d97706", edge: "#cbd5e1", cont: "#059669", label: "#475569", folderLabel: "#64748b", stroke: "#ffffff" };
+      ? { folder: "#64748b", proj: "#a78bfa", sess: "#60a5fa", sessCompact: "#fbbf24", edge: "#334155", cont: "#34d399", label: "#cbd5e1", folderLabel: "#94a3b8", stroke: "#0f172a", repo: "#34d399", workdir: "#a78bfa", workdirGone: "#475569" }
+      : { folder: "#94a3b8", proj: "#7c3aed", sess: "#2563eb", sessCompact: "#d97706", edge: "#cbd5e1", cont: "#059669", label: "#475569", folderLabel: "#64748b", stroke: "#ffffff", repo: "#059669", workdir: "#7c3aed", workdirGone: "#cbd5e1" };
 
     // Split links: structural ones drive the layout; continuation ones are overlay-only.
     const structuralLinks = data.links.filter((l) => l.kind !== "continuation");
@@ -97,10 +129,21 @@ const graphJson = JSON.stringify(graph);
     const folderRadius = (d) => Math.max(8, Math.sqrt(d.projectCount || 1) * 6);
     const projRadius = (d) => Math.max(6, Math.sqrt(d.sessionCount || 1) * 4);
     const sessRadius = (d) => Math.max(3, Math.sqrt(d.messageCount || 1) * 0.55);
+    const repoRadius = (d) => Math.max(9, Math.sqrt(d.workdirCount || 1) * 6);
     const nodeRadius = (d) =>
-      d.type === "folder" ? folderRadius(d) : d.type === "project" ? projRadius(d) : sessRadius(d);
+      d.type === "folder" ? folderRadius(d)
+      : d.type === "repo" ? repoRadius(d)
+      : d.type === "project" ? projRadius(d)
+      : d.type === "workdir" ? 7
+      : sessRadius(d);
     const nodeFill = (d) =>
-      d.type === "folder" ? C.folder : d.type === "project" ? C.proj : d.compactCount > 0 ? C.sessCompact : C.sess;
+      d.type === "folder" ? C.folder
+      : d.type === "repo" ? C.repo
+      : d.type === "project" ? C.proj
+      : d.type === "workdir" ? (d.existsOnDisk ? C.workdir : C.workdirGone)
+      : d.compactCount > 0 ? C.sessCompact : C.sess;
+    // Always-visible labels for everything except sessions (which show on hover).
+    const showsLabel = (d) => d.type !== "session";
 
     const svg = select(svgEl);
     const root = svg.append("g");
@@ -146,15 +189,16 @@ const graphJson = JSON.stringify(graph);
       .append("circle")
       .attr("r", nodeRadius)
       .attr("fill", nodeFill)
-      .attr("fill-opacity", (d) => (d.type === "folder" ? 0.55 : 1))
-      .attr("stroke", C.stroke)
-      .attr("stroke-width", 1.5);
+      .attr("fill-opacity", (d) => (d.type === "folder" ? 0.55 : d.type === "workdir" && !d.existsOnDisk ? 0.5 : 1))
+      .attr("stroke", (d) => (d.type === "workdir" && !d.existsOnDisk ? C.workdir : C.stroke))
+      .attr("stroke-width", 1.5)
+      .attr("stroke-dasharray", (d) => (d.type === "workdir" && !d.existsOnDisk ? "2 2" : null));
 
-    // Folder + project labels always visible; session labels only on hover.
+    // Hubs (folder/repo/project/workdir) labelled always; sessions only on hover.
     const label = node
       .append("text")
-      .text((d) => (d.type === "session" ? "" : d.label))
-      .attr("font-size", (d) => (d.type === "folder" ? 12 : d.type === "project" ? 11 : 9))
+      .text((d) => (showsLabel(d) ? d.label : ""))
+      .attr("font-size", (d) => (d.type === "folder" || d.type === "repo" ? 12 : d.type === "project" ? 11 : 9))
       .attr("font-weight", (d) => (d.type === "session" ? 400 : 600))
       .attr("fill", (d) => (d.type === "folder" ? C.folderLabel : C.label))
       .attr("dx", (d) => nodeRadius(d) + 4)
@@ -185,13 +229,15 @@ const graphJson = JSON.stringify(graph);
         } else {
           select(this).select("text").attr("font-weight", 700);
         }
-        const meta =
-          d.type === "folder"
-            ? `${d.projectCount} projects`
-            : d.type === "project"
-              ? `${d.sessionCount} session${d.sessionCount === 1 ? "" : "s"}`
-              : `${d.messageCount} msgs${d.compactCount > 0 ? ` · ${d.compactCount} compact` : ""}`;
-        tooltip.innerHTML = `<div class="font-semibold">${truncate(d.label, 80)}</div><div class="text-slate-400">${meta}</div>`;
+        let meta;
+        if (d.type === "folder") meta = `${d.projectCount} projects`;
+        else if (d.type === "project") meta = `${d.sessionCount} session${d.sessionCount === 1 ? "" : "s"}`;
+        else if (d.type === "repo")
+          meta = `${d.workdirCount} workdir${d.workdirCount === 1 ? "" : "s"}${d.remote ? ` · ${d.remote}` : ""}`;
+        else if (d.type === "workdir")
+          meta = `${d.existsOnDisk ? "" : "⚠ deleted · "}${d.workdirPath}`;
+        else meta = `${d.messageCount} msgs${d.compactCount > 0 ? ` · ${d.compactCount} compact` : ""}`;
+        tooltip.innerHTML = `<div class="font-semibold">${truncate(d.label, 80)}</div><div class="text-slate-400 break-all">${truncate(meta, 120)}</div>`;
         tooltip.classList.remove("hidden");
       })
       .on("mousemove", function (event) {
@@ -216,9 +262,14 @@ const graphJson = JSON.stringify(graph);
       });
 
     // Force simulation — only structural links drive layout.
-    const charge = (d) => (d.type === "folder" ? -400 : d.type === "project" ? -160 : -36);
+    const charge = (d) =>
+      d.type === "folder" || d.type === "repo" ? -400
+      : d.type === "project" || d.type === "workdir" ? -160
+      : -36;
+    const linkDistance = (l) =>
+      l.kind === "project-folder" ? 70 : l.kind === "workdir-repo" ? 60 : 32;
     const sim = forceSimulation(data.nodes)
-      .force("link", forceLink(structuralLinks).id((d) => d.id).distance((l) => (l.kind === "project-folder" ? 70 : 32)).strength(0.5))
+      .force("link", forceLink(structuralLinks).id((d) => d.id).distance(linkDistance).strength(0.5))
       .force("charge", forceManyBody().strength(charge))
       .force("center", forceCenter(width / 2, height / 2))
       .force("x", forceX(width / 2).strength(0.03))
@@ -268,9 +319,13 @@ const graphJson = JSON.stringify(graph);
     );
 
     // Continuation toggle — flips the whole overlay group's visibility.
-    document.getElementById("graph-continuations").addEventListener("change", (e) => {
-      contGroup.style("display", e.target.checked ? null : "none");
-    });
+    // Only present in the Folders view (the Repos view has no continuation links).
+    const contToggle = document.getElementById("graph-continuations");
+    if (contToggle) {
+      contToggle.addEventListener("change", (e) => {
+        contGroup.style("display", e.target.checked ? null : "none");
+      });
+    }
 
     // In-graph search: highlight matching node labels, dim the rest.
     const searchInput = document.getElementById("graph-search");
@@ -291,10 +346,25 @@ const graphJson = JSON.stringify(graph);
       });
     });
 
-    // Reset view
-    document.getElementById("graph-reset").addEventListener("click", () => {
-      svg.transition().duration(400).call(zoomBehavior.transform, zoomIdentity);
-    });
+    // Zoom-to-fit: frame all nodes within the canvas so nothing clips off-edge.
+    function fitView() {
+      if (!data.nodes.length) return;
+      const xs = data.nodes.map((n) => n.x), ys = data.nodes.map((n) => n.y);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      const w = (maxX - minX) || 1, h = (maxY - minY) || 1;
+      const pad = 70;
+      const scale = Math.min(4, Math.max(0.05, Math.min((width - pad * 2) / w, (height - pad * 2) / h)));
+      const tx = width / 2 - scale * (minX + maxX) / 2;
+      const ty = height / 2 - scale * (minY + maxY) / 2;
+      svg.transition().duration(450).call(zoomBehavior.transform, zoomIdentity.translate(tx, ty).scale(scale));
+    }
+    // Fit once the simulation cools, with a fallback in case "end" is slow.
+    sim.on("end", fitView);
+    setTimeout(fitView, 1800);
+
+    // Reset view → re-fit everything
+    document.getElementById("graph-reset").addEventListener("click", fitView);
 
     // Resize
     window.addEventListener("resize", () => {
