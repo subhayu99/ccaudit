@@ -18,7 +18,13 @@ const messages = session ? getSessionMessages(db, sessionId) : [];
 db.close();
 
 const classified = messages.map((m) => ({ m, kind: classifyMessage(m) }));
-const visible = classified.filter((c) => c.kind !== "noise");
+const allVisible = classified.filter((c) => c.kind !== "noise");
+
+// Cap rendered turns so a 17k-message session doesn't ship a multi-MB page.
+// Keep the most recent turns (resume-relevant); the title preserves the ask.
+const CAP = 500;
+const truncatedBy = Math.max(0, allVisible.length - CAP);
+const visible = truncatedBy > 0 ? allVisible.slice(allVisible.length - CAP) : allVisible;
 
 // Pre-render markdown + tool labels for each visible turn.
 type Block =
@@ -82,6 +88,9 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
     </header>
 
     <div class="convo" id="convo">
+      {truncatedBy > 0 && (
+        <div class="trunc-note">⤒ {truncatedBy.toLocaleString()} earlier turns hidden — showing the latest {visible.length.toLocaleString()}. Full history is preserved in the session file.</div>
+      )}
       {blocks.map((b) => (
         b.t === "user" || b.t === "assistant" ? (
           <div class={`turn ${b.t}`} id={`m${b.lineNo}`}>
@@ -124,6 +133,7 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
 <style>
   .reader-wrap { position:relative; }
   .convo { padding:24px 28px 80px; }
+  .trunc-note { background:var(--panel); border:1px dashed var(--border); border-radius:9px; padding:9px 13px; margin-bottom:20px; font-size:12.5px; color:var(--text-faint); max-width:74ch; }
   .turn { margin-bottom:22px; max-width:74ch; }
   .role { font-size:11px; letter-spacing:.08em; text-transform:uppercase; font-weight:700; margin-bottom:7px; }
   .role.user { color:var(--amber); }
