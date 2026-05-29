@@ -11,3 +11,4 @@ coverage/
 *.db-wal
 .ccaudit/
 .astro/
+dist-web/

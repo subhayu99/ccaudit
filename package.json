@@ -14,7 +14,8 @@
     "astro:preview": "astro preview --port 4321",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "astro check && tsc --noEmit"
+    "typecheck": "astro check && tsc --noEmit",
+    "prepare": "tsup"
   },
   "engines": {
     "node": ">=20"

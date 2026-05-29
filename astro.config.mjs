@@ -5,6 +5,9 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   output: "server",
   adapter: node({ mode: "standalone" }),
+  // Astro builds into dist-web/ so `astro build` never clobbers the tsup-built
+  // CLI bundle at dist/index.js (both used to target dist/ and stomp each other).
+  outDir: "./dist-web",
   server: { port: 4321, host: "127.0.0.1" },
   vite: {
     plugins: [tailwindcss()],
