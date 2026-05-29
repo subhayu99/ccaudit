@@ -10,8 +10,8 @@ const { tree, activeRepo, activeWorkdir, mode } = Astro.props;
          style="background:linear-gradient(135deg,var(--amber),var(--c-orange)); color:#241f17;">c</div>
     <h1 class="font-serif text-[18px] font-semibold" style="color:var(--text);">ccaudit</h1>
   </div>
-  <a href="/search" class="mx-3 mb-3 flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px]"
-     style="background:var(--canvas); border:1px solid var(--border); color:var(--text-faint); text-decoration:none;">
+  <a href="/search" data-open-cmdk class="mx-3 mb-3 flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px]"
+     style="background:var(--canvas); border:1px solid var(--border); color:var(--text-faint); text-decoration:none; cursor:pointer;">
     <span>⚲</span><span>Search history…</span>
     <span class="ml-auto font-mono-w text-[11px] px-1.5 rounded" style="background:var(--raise); border:1px solid var(--border);">⌘K</span>
   </a>

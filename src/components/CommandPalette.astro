@@ -1,0 +1,84 @@
+---
+// src/components/CommandPalette.astro — ⌘K fuzzy jump + search entry.
+// Items are passed as JSON via a data-attr (avoids the Vite dev script-scan quirk).
+interface Item { label: string; sub: string; href: string; kind: string; }
+interface Props { items: Item[]; }
+const { items } = Astro.props;
+const json = JSON.stringify(items);
+---
+<div id="cmdk-data" data-items={json} hidden></div>
+<div id="cmdk" class="cmdk" hidden>
+  <div class="cmdk-backdrop" id="cmdk-backdrop"></div>
+  <div class="cmdk-panel" role="dialog" aria-modal="true">
+    <input id="cmdk-input" type="text" placeholder="Jump to a repo or session… (or type to search history)" autocomplete="off" />
+    <ul id="cmdk-list"></ul>
+    <div class="cmdk-foot"><span>↑↓ navigate</span><span>↵ open</span><span>esc close</span></div>
+  </div>
+</div>
+
+<style>
+  .cmdk { position:fixed; inset:0; z-index:50; display:flex; align-items:flex-start; justify-content:center; padding-top:14vh; }
+  .cmdk-backdrop { position:absolute; inset:0; background:rgba(0,0,0,.55); }
+  .cmdk-panel { position:relative; width:min(640px,92vw); background:var(--panel); border:1px solid var(--border); border-radius:14px; box-shadow:0 24px 60px rgba(0,0,0,.5); overflow:hidden; }
+  #cmdk-input { width:100%; box-sizing:border-box; padding:16px 18px; background:transparent; border:none; border-bottom:1px solid var(--border-soft); color:var(--text); font-size:15px; outline:none; font-family:inherit; }
+  #cmdk-list { list-style:none; margin:0; padding:6px; max-height:48vh; overflow-y:auto; }
+  .cmdk-item { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:8px; cursor:pointer; }
+  .cmdk-item .lbl { color:var(--text); font-size:14px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cmdk-item .sub { color:var(--text-faint); font-size:11.5px; font-family:var(--mono); white-space:nowrap; }
+  .cmdk-item .dot { width:7px; height:7px; border-radius:50%; flex:none; }
+  .cmdk-item[aria-selected="true"] { background:var(--raise); }
+  .cmdk-foot { display:flex; gap:16px; padding:8px 14px; border-top:1px solid var(--border-soft); color:var(--text-faint); font-size:11px; }
+</style>
+
+<script>
+  type Item = { label: string; sub: string; href: string; kind: string };
+  const root = document.getElementById("cmdk")!;
+  const input = document.getElementById("cmdk-input") as HTMLInputElement;
+  const listEl = document.getElementById("cmdk-list")!;
+  const all: Item[] = JSON.parse(document.getElementById("cmdk-data")!.dataset.items || "[]");
+  let results: Item[] = [];
+  let sel = 0;
+
+  const colorFor = (k: string) =>
+    k === "repo" ? "var(--c-green)" : k === "workdir" ? "var(--violet)" : k === "search" ? "var(--amber)" : "var(--c-blue)";
+
+  function render() {
+    listEl.innerHTML = "";
+    results.forEach((r, i) => {
+      const li = document.createElement("li");
+      li.className = "cmdk-item";
+      li.setAttribute("aria-selected", String(i === sel));
+      li.innerHTML = `<span class="dot" style="background:${colorFor(r.kind)}"></span><span class="lbl"></span><span class="sub"></span>`;
+      (li.querySelector(".lbl") as HTMLElement).textContent = r.label;
+      (li.querySelector(".sub") as HTMLElement).textContent = r.sub;
+      li.addEventListener("click", () => go(r));
+      listEl.appendChild(li);
+    });
+  }
+  function compute(q: string) {
+    const query = q.trim().toLowerCase();
+    if (!query) { results = all.slice(0, 30); }
+    else {
+      results = all.filter((it) => it.label.toLowerCase().includes(query) || it.sub.toLowerCase().includes(query)).slice(0, 30);
+      results.unshift({ label: `Search history for “${q.trim()}”`, sub: "full-text", href: `/search?q=${encodeURIComponent(q.trim())}`, kind: "search" });
+    }
+    sel = 0; render();
+  }
+  function go(r: Item | undefined) { if (r) window.location.href = r.href; }
+  function open() { root.hidden = false; input.value = ""; compute(""); input.focus(); }
+  function close() { root.hidden = true; }
+
+  document.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); root.hidden ? open() : close(); return; }
+    if (root.hidden) return;
+    if (e.key === "Escape") { close(); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); sel = Math.min(sel + 1, results.length - 1); render(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); sel = Math.max(sel - 1, 0); render(); }
+    else if (e.key === "Enter") { e.preventDefault(); go(results[sel]); }
+  });
+  input.addEventListener("input", () => compute(input.value));
+  document.getElementById("cmdk-backdrop")!.addEventListener("click", close);
+  // open from the sidebar search affordance
+  document.querySelectorAll('[data-open-cmdk]').forEach((el) =>
+    el.addEventListener("click", (e) => { e.preventDefault(); open(); }));
+</script>

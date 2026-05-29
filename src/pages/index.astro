@@ -3,6 +3,7 @@ import AppShell from "../layouts/AppShell.astro";
 import Sidebar from "../components/Sidebar.astro";
 import SessionListPane from "../components/SessionListPane.astro";
 import SessionReader from "../components/SessionReader.astro";
+import CommandPalette from "../components/CommandPalette.astro";
 import { openDb } from "../db/init";
 import { getLibraryTree, listSessionsGrouped, type Selection } from "../db/library";
 import { getIndexStats } from "../db/stats";
@@ -21,6 +22,13 @@ const tree = getLibraryTree(db);
 const list = listSessionsGrouped(db, sel, Date.now());
 const stats = getIndexStats(db);
 db.close();
+
+// Flat jump-index for the ⌘K palette: repos, workdirs, and sessions.
+const paletteItems = [
+  ...tree.repos.map((r) => ({ label: r.displayName, sub: `repo · ${r.sessionCount} sessions`, href: `/?repo=${encodeURIComponent(r.repoId)}`, kind: "repo" })),
+  ...tree.repos.flatMap((r) => r.workdirs.map((w) => ({ label: w.label, sub: `${r.displayName} · workdir`, href: `/?workdir=${encodeURIComponent(w.path)}`, kind: "workdir" }))),
+  ...tree.repos.flatMap((r) => r.workdirs.flatMap((w) => w.sessions.map((s) => ({ label: s.title, sub: `${r.displayName}/${w.label}`, href: `/?session=${s.id}`, kind: "session" })))),
+];
 ---
 <AppShell title="ccaudit">
   <Sidebar slot="sidebar" tree={tree} activeRepo={repo} activeWorkdir={workdir} mode={mode} />
@@ -49,4 +57,5 @@ db.close();
       </div>
     )}
   </div>
+  <CommandPalette items={paletteItems} />
 </AppShell>
