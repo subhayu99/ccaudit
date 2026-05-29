@@ -1,12 +1,14 @@
 ---
-// src/layouts/AppShell.astro — adaptive shell.
-//  - with a "list" slot  → 3-pane (sidebar | list | reader)  [browse]
-//  - without            → 2-pane (sidebar | wide main)       [graph/search/projects]
+// src/layouts/AppShell.astro — adaptive, responsive shell.
+//  desktop ≥900px: 3-pane (sidebar | list | reader) or 2-pane (sidebar | main)
+//  mobile  <900px: sidebar becomes an off-canvas drawer; one content pane shows
+//                  (reader if a session/page is in focus, else the list).
 import "../styles/global.css";
-interface Props { title?: string; }
-const { title = "ccaudit" } = Astro.props;
+interface Props { title?: string; mobileMain?: "list" | "reader"; }
+const { title = "ccaudit", mobileMain = "list" } = Astro.props;
 const hasList = Astro.slots.has("list");
 const cols = hasList ? "264px 372px 1fr" : "264px 1fr";
+const mobileFocus = hasList ? mobileMain : "reader";
 ---
 <html lang="en" class="theme-dark">
   <head>
@@ -14,7 +16,6 @@ const cols = hasList ? "264px 372px 1fr" : "264px 1fr";
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <script is:inline>
-      // dark-first; persist user choice
       try {
         const t = localStorage.getItem("ccaudit-theme");
         document.documentElement.classList.toggle("theme-light", t === "light");
@@ -22,19 +23,58 @@ const cols = hasList ? "264px 372px 1fr" : "264px 1fr";
     </script>
   </head>
   <body class="m-0" style="background:var(--canvas); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Roboto,sans-serif;">
-    <div class="grid h-screen overflow-hidden" style={`grid-template-columns: ${cols};`}>
-      <aside class="overflow-y-auto" style="background:var(--panel); border-right:1px solid var(--border-soft);">
+    <div class="mobile-bar">
+      <button id="drawer-toggle" aria-label="menu" class="hamburger">☰</button>
+      <span class="font-serif" style="font-size:17px; font-weight:600; color:var(--text);">ccaudit</span>
+    </div>
+    <div class="drawer-backdrop" id="drawer-backdrop"></div>
+    <div class="shell-grid" data-mobile={mobileFocus} style={`grid-template-columns: ${cols};`}>
+      <aside class="shell-sidebar" style="background:var(--panel); border-right:1px solid var(--border-soft);">
         <slot name="sidebar" />
       </aside>
       {hasList && (
-        <section class="overflow-hidden flex flex-col" style="background:var(--panel-2); border-right:1px solid var(--border-soft);">
+        <section class="shell-list" style="background:var(--panel-2); border-right:1px solid var(--border-soft);">
           <slot name="list" />
         </section>
       )}
-      <main class="overflow-y-auto" style="background:var(--canvas);">
+      <main class="shell-reader" style="background:var(--canvas);">
         <slot name="reader" />
       </main>
     </div>
     <slot />
+
+    <style>
+      .shell-grid { display:grid; height:100vh; overflow:hidden; }
+      .shell-sidebar { overflow-y:auto; }
+      .shell-list { overflow:hidden; display:flex; flex-direction:column; }
+      .shell-reader { overflow-y:auto; }
+      .mobile-bar { display:none; align-items:center; gap:12px; height:52px; padding:0 14px; border-bottom:1px solid var(--border-soft); background:var(--panel); position:sticky; top:0; z-index:30; }
+      .hamburger { background:none; border:none; color:var(--text); font-size:20px; cursor:pointer; line-height:1; padding:4px 6px; }
+      .drawer-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:35; }
+
+      @media (max-width: 900px) {
+        .mobile-bar { display:flex; }
+        .shell-grid { grid-template-columns: 1fr !important; height:calc(100vh - 52px); }
+        .shell-sidebar { position:fixed; top:0; bottom:0; left:0; width:264px; z-index:40; transform:translateX(-100%); transition:transform .2s ease; }
+        body.drawer-open .shell-sidebar { transform:none; }
+        body.drawer-open .drawer-backdrop { display:block; }
+        .shell-grid[data-mobile="list"] .shell-reader { display:none; }
+        .shell-grid[data-mobile="reader"] .shell-list { display:none; }
+        .shell-list, .shell-reader { border-right:none !important; }
+      }
+    </style>
+    <script is:inline>
+      (function () {
+        var t = document.getElementById("drawer-toggle");
+        var bd = document.getElementById("drawer-backdrop");
+        function close() { document.body.classList.remove("drawer-open"); }
+        if (t) t.addEventListener("click", function () { document.body.classList.toggle("drawer-open"); });
+        if (bd) bd.addEventListener("click", close);
+        // close the drawer when a sidebar link is tapped
+        document.querySelectorAll(".shell-sidebar a").forEach(function (a) {
+          a.addEventListener("click", close);
+        });
+      })();
+    </script>
   </body>
 </html>

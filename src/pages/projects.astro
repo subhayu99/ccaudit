@@ -45,7 +45,7 @@ db.close();
         </thead>
         <tbody>
           {projects.map((p) => (
-            <tr class="prow" onclick={`window.location='/?project=${encodeURIComponent(p.projectDir)}'`} style="border-bottom:1px solid var(--border-soft);">
+            <tr class="prow" style="border-bottom:1px solid var(--border-soft);">
               <td class="px-3 py-2 whitespace-nowrap" style="color:var(--text-dim);">{formatTimestamp(p.lastActivity)}</td>
               <td class="px-3 py-2 font-semibold"><span style="color:var(--amber);">{p.projectLabel}</span></td>
               <td class="px-3 py-2 text-right tabular-nums" style="color:var(--text-dim);">{p.sessionCount}</td>
@@ -61,7 +61,6 @@ db.close();
   </div>
 
   <style>
-    .prow { cursor:pointer; }
     .prow:hover { background:var(--panel-2); }
     .pbtn { padding:4px 10px; font-size:12px; font-weight:500; border-radius:7px; background:var(--raise); color:var(--text-dim); border:1px solid var(--border); cursor:pointer; }
     .pbtn:hover { background:var(--border); color:var(--text); }

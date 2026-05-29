@@ -29,7 +29,7 @@ const paletteItems = [
   ...tree.repos.flatMap((r) => r.workdirs.flatMap((w) => w.sessions.map((s) => ({ label: s.title, sub: `${r.displayName}/${w.label}`, href: `/?session=${s.id}`, kind: "session" })))),
 ];
 ---
-<AppShell title="ccaudit">
+<AppShell title="ccaudit" mobileMain={session ? "reader" : "list"}>
   <Sidebar slot="sidebar" tree={tree} activeRepo={repo} activeWorkdir={workdir} mode={mode} />
   <SessionListPane slot="list" data={list} activeSession={session} />
   <div slot="reader">
