@@ -12,11 +12,13 @@ describe("astro smoke", () => {
     await dev.stop();
   });
 
-  it("serves the index page with the correct title", async () => {
+  it("serves the 3-pane shell on the index page", async () => {
     const res = await fetch(dev.url + "/");
     expect(res.status).toBe(200);
     const body = await res.text();
-    expect(body).toContain("<title>ccaudit — sessions</title>");
-    expect(body).toContain("Sessions");
+    expect(body).toContain("<title>ccaudit</title>");
+    expect(body).toContain("ccaudit");        // sidebar brand
+    expect(body).toContain("Library");        // sidebar section
+    expect(body).toContain("Repositories");   // sidebar section
   });
 });
