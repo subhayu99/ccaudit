@@ -1,8 +1,9 @@
 ---
 // src/components/Sidebar.astro
 import type { LibraryTree } from "../db/library";
-interface Props { tree: LibraryTree; activeRepo?: string; activeWorkdir?: string; mode?: string; }
-const { tree, activeRepo, activeWorkdir, mode } = Astro.props;
+import type { TopicSummary } from "../db/topics";
+interface Props { tree: LibraryTree; topics?: TopicSummary[]; activeRepo?: string; activeWorkdir?: string; activeTopic?: number; mode?: string; }
+const { tree, topics = [], activeRepo, activeWorkdir, activeTopic, mode } = Astro.props;
 ---
 <div class="flex flex-col h-full" style="color:var(--text-dim);">
   <div class="flex items-center gap-2 px-4 pt-4 pb-3">
@@ -20,6 +21,21 @@ const { tree, activeRepo, activeWorkdir, mode } = Astro.props;
     <a href="/?mode=recent" class="lib-item" data-active={mode === "recent"}>◷ Recent</a>
     <a href="/?mode=all" class="lib-item" data-active={mode === "all"}>✦ All sessions <span class="ml-auto text-[11px]">{tree.totalCount}</span></a>
     <a href="/graph?view=repos" class="lib-item">⌗ Graph view</a>
+
+    <div class="flex items-center px-2.5 pt-3.5 pb-1.5">
+      <span class="text-[10.5px] tracking-wider uppercase font-semibold" style="color:var(--text-faint);">Topics</span>
+      <button id="cluster-topics" class="ml-auto" style="background:none;border:none;color:var(--amber-bright);cursor:pointer;font-size:10.5px;" title="Cluster sessions into topics with AI (~3min)">✨ {topics.length ? "Re-cluster" : "Cluster"}</button>
+    </div>
+    {topics.length === 0 && (
+      <div class="px-2.5 pb-1 text-[11.5px]" style="color:var(--text-faint);">Click ✨ to group sessions by topic.</div>
+    )}
+    {topics.map((tp) => (
+      <a href={`/?topic=${tp.id}`} class="lib-item" data-active={tp.id === activeTopic}>
+        <span class="w-2 h-2 rounded-full inline-block" style="background:var(--amber);"></span>
+        <span class="truncate">{tp.name}</span>
+        <span class="ml-auto text-[11px]">{tp.sessionCount}</span>
+      </a>
+    ))}
 
     <div class="text-[10.5px] tracking-wider uppercase px-2.5 pt-3.5 pb-1.5 font-semibold" style="color:var(--text-faint);">Repositories</div>
     {tree.repos.map((repo) => (
@@ -83,6 +99,21 @@ const { tree, activeRepo, activeWorkdir, mode } = Astro.props;
       group.dataset.open = group.dataset.open === "true" ? "false" : "true";
     });
   });
+
+  // Cluster all sessions into topics with AI (~3 min, ~$0.08).
+  const clusterBtn = document.getElementById("cluster-topics");
+  if (clusterBtn) {
+    clusterBtn.addEventListener("click", async (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const el = e.currentTarget as HTMLButtonElement;
+      const original = el.textContent;
+      el.disabled = true; el.textContent = "✨ Clustering…";
+      try {
+        const res = await fetch("/api/cluster", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        if (res.ok) window.location.href = "/"; else { el.disabled = false; el.textContent = original; }
+      } catch { el.disabled = false; el.textContent = original; }
+    });
+  }
 
   // Hide a repo (all its workdirs) or a single workdir from every view.
   document.querySelectorAll(".hide-btn").forEach((b) => {

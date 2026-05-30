@@ -119,6 +119,7 @@ export function getLibraryTree(db: Database.Database): LibraryTree {
 export type Selection =
   | { repo: string }
   | { workdir: string }
+  | { topic: number; topicName: string; topicIds: string[] }
   | { mode: "recent" | "all" };
 
 export type ListItem = {
@@ -160,6 +161,10 @@ export function listSessionsGrouped(
       const w = r.workdirs.find((x) => x.path === sel.workdir);
       if (w) { header = { title: w.label, subtitle: r.displayName }; items = w.sessions.map((s) => toItem(s, w.label)); break; }
     }
+  } else if ("topic" in sel) {
+    const set = new Set(sel.topicIds);
+    header = { title: sel.topicName, subtitle: `${sel.topicIds.length} sessions · topic` };
+    items = tree.repos.flatMap((r) => r.workdirs.flatMap((w) => w.sessions.filter((s) => set.has(s.id)).map((s) => toItem(s, w.label))));
   } else {
     header = { title: sel.mode === "recent" ? "Recent" : "All sessions", subtitle: null };
     items = tree.repos.flatMap((r) => r.workdirs.flatMap((w) => w.sessions.map((s) => toItem(s, w.label))));

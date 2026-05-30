@@ -7,18 +7,27 @@ import CommandPalette from "../components/CommandPalette.astro";
 import Dashboard from "../components/Dashboard.astro";
 import { openDb } from "../db/init";
 import { getLibraryTree, listSessionsGrouped, type Selection } from "../db/library";
+import { listTopics, getTopic } from "../db/topics";
 import { INDEX_DB_PATH } from "../paths";
 
 const url = Astro.url;
 const repo = url.searchParams.get("repo") ?? undefined;
 const workdir = url.searchParams.get("workdir") ?? undefined;
+const topicId = url.searchParams.get("topic") ? Number(url.searchParams.get("topic")) : undefined;
 const mode = (url.searchParams.get("mode") as "recent" | "all" | null) ?? undefined;
 const session = url.searchParams.get("session") ?? undefined;
 
-const sel: Selection = repo ? { repo } : workdir ? { workdir } : { mode: mode ?? "recent" };
-
 const db = openDb(INDEX_DB_PATH);
 const tree = getLibraryTree(db);
+const topics = listTopics(db);
+const topic = topicId !== undefined ? getTopic(db, topicId) : null;
+const sel: Selection = repo
+  ? { repo }
+  : workdir
+    ? { workdir }
+    : topic
+      ? { topic: topicId!, topicName: topic.name, topicIds: topic.sessionIds }
+      : { mode: mode ?? "recent" };
 const list = listSessionsGrouped(db, sel, Date.now(), tree); // reuse the tree (one build per request)
 db.close();
 
@@ -26,7 +35,9 @@ db.close();
 // stay put instead of resetting to the default view.
 const selParams = repo
   ? `repo=${encodeURIComponent(repo)}`
-  : workdir
+  : topicId !== undefined
+    ? `topic=${topicId}`
+    : workdir
     ? `workdir=${encodeURIComponent(workdir)}`
     : mode
       ? `mode=${mode}`
@@ -40,7 +51,7 @@ const paletteItems = [
 ];
 ---
 <AppShell title="ccaudit" mobileMain={session ? "reader" : "list"}>
-  <Sidebar slot="sidebar" tree={tree} activeRepo={repo} activeWorkdir={workdir} mode={mode} />
+  <Sidebar slot="sidebar" tree={tree} topics={topics} activeRepo={repo} activeWorkdir={workdir} activeTopic={topicId} mode={mode} />
   <SessionListPane slot="list" data={list} activeSession={session} selParams={selParams} />
   <div slot="reader">
     {session ? <SessionReader sessionId={session} /> : <Dashboard />}
