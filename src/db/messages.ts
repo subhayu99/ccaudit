@@ -119,7 +119,7 @@ export function escapeFtsQueryAny(query: string): string {
 export function searchMessages(
   db: Database.Database,
   query: string,
-  opts: { limit?: number; match?: "all" | "any" } = {}
+  opts: { limit?: number; match?: "all" | "any"; types?: string[] } = {}
 ): SearchHit[] {
   const limit = opts.limit ?? 50;
   const ftsQuery = opts.match === "any" ? escapeFtsQueryAny(query) : escapeFtsQuery(query);
@@ -129,6 +129,11 @@ export function searchMessages(
   // otherwise force a per-row scan of the full sessions id-set for nothing.
   const exclClause =
     excl.sql === "1" ? "" : `AND m.session_id IN (SELECT id FROM sessions WHERE ${excl.sql})`;
+  // Optional message-type restriction (types are code-controlled, safe to inline).
+  const typeClause =
+    opts.types && opts.types.length
+      ? `AND m.type IN (${opts.types.map((t) => `'${t}'`).join(",")})`
+      : "";
   // FTS5 snippet(): table, column, before, after, ellipsis, max-tokens
   const rows = db
     .prepare(
@@ -140,6 +145,7 @@ export function searchMessages(
          JOIN messages m ON m.rowid = messages_fts.rowid
         WHERE messages_fts MATCH @q
           ${exclClause}
+          ${typeClause}
         ORDER BY rank ASC
         LIMIT @limit`
     )

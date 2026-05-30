@@ -1,6 +1,32 @@
 import { runClaude, parseClaudeJson } from "./run-claude.js";
 
-export type AskExcerpt = { n: number; sessionId: string; lineNo: number; title: string; text: string };
+// Stopwords + question/filler words stripped from a question before FTS retrieval, so we match on
+// the meaningful terms ("Loop Inspect") instead of greetings/file-lists that share "what/did/on/i".
+const STOPWORDS = new Set(
+  ("a an the and or but if then else of to in on at for with without about as by from into over under " +
+   "again further is are was were be been being do does did doing have has had having i me my mine we us our " +
+   "you your yours he she it its they them their this that these those what which who whom whose how why when " +
+   "where can could should would will shall may might must not no nor so than too very just only own same " +
+   "get got go went make made use used want need please tell show find give me work worked working on").split(/\s+/)
+);
+
+/** Meaningful search terms from a free-text question (lowercased, stopwords + 1-char tokens removed). */
+export function contentTerms(q: string): string[] {
+  return (q.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((t) => t.length > 1 && !STOPWORDS.has(t));
+}
+
+/** Heuristic: a low-signal excerpt for RAG — too short, a file/dir listing, or mostly non-prose. */
+export function isLowSignalExcerpt(text: string): boolean {
+  const t = text.trim();
+  if (t.length < 25) return true;
+  const pathHits = (t.match(/\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+/g) ?? []).length;
+  if (pathHits >= 3) return true; // directory / file dumps
+  const letters = (t.match(/[A-Za-z]/g) ?? []).length;
+  if (letters / t.length < 0.45) return true; // JSON/path blobs, tables
+  return false;
+}
+
+export type AskExcerpt = { n: number; sessionId: string; lineNo: number; title: string; text: string; snippet?: string };
 export type AskResult = { answer: string; costUsd: number };
 export type AskRun = (prompt: string) => AskResult | Promise<AskResult>;
 

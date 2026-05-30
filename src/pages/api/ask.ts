@@ -3,31 +3,55 @@ import type Database from "better-sqlite3";
 import { getDb } from "../../db/init.js";
 import { searchMessages } from "../../db/messages.js";
 import { getSessionsByIds } from "../../db/sessions.js";
-import { answerFromExcerpts, type AskExcerpt } from "../../labeling/ask.js";
+import { answerFromExcerpts, contentTerms, isLowSignalExcerpt, type AskExcerpt } from "../../labeling/ask.js";
+import type { SearchHit } from "../../types.js";
 
 function json(obj: unknown, status = 200): Response {
   return new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
 }
 
 type Source = { n: number; sessionId: string; lineNo: number; title: string; snippet: string };
+const MAX_EXCERPTS = 10;
+const MAX_PER_SESSION = 2;
+const RAG_TYPES = ["user", "assistant"]; // skip tool output / attachments / meta lines
 
-/** FTS-retrieve the top spans for a question and shape them into excerpts + display sources. */
+/** Retrieve relevant spans for a question: meaningful terms only (stopwords stripped), AND-first
+ *  then OR-broaden, restricted to real turns, with file-dump noise filtered and sessions diversified. */
 function retrieve(db: Database.Database, q: string): { excerpts: AskExcerpt[]; sources: Source[] } {
-  const hits = searchMessages(db, q, { limit: 12, match: "any" });
+  const cleaned = contentTerms(q).join(" ");
+  const opts = { limit: 30, types: RAG_TYPES };
+  let hits: SearchHit[] = cleaned ? searchMessages(db, cleaned, { ...opts, match: "all" }) : [];
+  if (hits.length < 4) {
+    // Too few precise matches — broaden to any-term (still only meaningful terms), append + dedup.
+    const broad = cleaned
+      ? searchMessages(db, cleaned, { ...opts, match: "any" })
+      : searchMessages(db, q, { ...opts, match: "any" });
+    const seen = new Set(hits.map((h) => `${h.sessionId}:${h.lineNo}`));
+    for (const h of broad) {
+      const k = `${h.sessionId}:${h.lineNo}`;
+      if (!seen.has(k)) { seen.add(k); hits.push(h); }
+    }
+  }
   if (hits.length === 0) return { excerpts: [], sources: [] };
+
   const sessions = getSessionsByIds(db, hits.map((h) => h.sessionId));
   const getText = db.prepare("SELECT text_content FROM messages WHERE session_id = ? AND line_no = ?");
-  const excerpts: AskExcerpt[] = hits
-    .map((h) => {
-      const row = getText.get(h.sessionId, h.lineNo) as { text_content: string | null } | undefined;
-      const s = sessions.get(h.sessionId);
-      const title = s?.aiTitle || s?.projectLabel || h.sessionId.slice(0, 8);
-      return { n: 0, sessionId: h.sessionId, lineNo: h.lineNo, title, text: row?.text_content ?? "", snippet: h.snippet };
-    })
-    .filter((e) => e.text.trim());
-  excerpts.forEach((e, i) => (e.n = i + 1));
+  const perSession = new Map<string, number>();
+  const excerpts: AskExcerpt[] = [];
+  for (const h of hits) {
+    if (excerpts.length >= MAX_EXCERPTS) break;
+    const row = getText.get(h.sessionId, h.lineNo) as { text_content: string | null } | undefined;
+    const text = (row?.text_content ?? "").trim();
+    if (!text || isLowSignalExcerpt(text)) continue;
+    const used = perSession.get(h.sessionId) ?? 0;
+    if (used >= MAX_PER_SESSION) continue; // diversify across sessions
+    perSession.set(h.sessionId, used + 1);
+    const s = sessions.get(h.sessionId);
+    const title = s?.aiTitle || s?.projectLabel || h.sessionId.slice(0, 8);
+    excerpts.push({ n: excerpts.length + 1, sessionId: h.sessionId, lineNo: h.lineNo, title, text, snippet: h.snippet });
+  }
   const sources: Source[] = excerpts.map((e) => ({
-    n: e.n, sessionId: e.sessionId, lineNo: e.lineNo, title: e.title, snippet: (e as { snippet?: string }).snippet ?? "",
+    n: e.n, sessionId: e.sessionId, lineNo: e.lineNo, title: e.title, snippet: e.snippet ?? "",
   }));
   return { excerpts, sources };
 }
