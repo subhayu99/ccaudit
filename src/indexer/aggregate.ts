@@ -1,5 +1,6 @@
 import { extractText } from "./extract.js";
 import { isInternalToolPrompt } from "../lib/internal-session.js";
+import { emptyModelUsage, type TokenUsage } from "../lib/pricing.js";
 import type { MessageRow, RawMessage } from "../types.js";
 
 export type AggregatorState = {
@@ -16,6 +17,8 @@ export type AggregatorState = {
   cwd: string | null;
   /** True if this session is one of ccaudit's own `claude -p` tool calls (excluded from the index). */
   isInternal: boolean;
+  /** Per-model token totals accumulated from assistant `message.usage`. */
+  tokenUsage: TokenUsage;
 };
 
 export type Aggregator = {
@@ -35,6 +38,7 @@ export function newAggregator(): Aggregator {
     messages: [], messageCount: 0, userMsgCount: 0, compactCount: 0,
     startedAt: null, lastActivity: null, firstPrompt: null,
     aiTitle: null, customTitle: null, gitBranch: null, cwd: null, isInternal: false,
+    tokenUsage: {},
   };
   return {
     state,
@@ -64,6 +68,17 @@ export function newAggregator(): Aggregator {
       if (type === "custom-title" && typeof raw.customTitle === "string" && raw.customTitle.trim()) {
         state.customTitle = raw.customTitle.trim();
       }
+      // Accumulate per-model token usage from assistant messages (skip synthetic/no-model).
+      const usage = raw.message?.usage;
+      const model = raw.message?.model;
+      if (usage && model && model !== "<synthetic>") {
+        const u = (state.tokenUsage[model] ??= emptyModelUsage());
+        u.input += usage.input_tokens ?? 0;
+        u.output += usage.output_tokens ?? 0;
+        u.cacheRead += usage.cache_read_input_tokens ?? 0;
+        u.cacheCreation += usage.cache_creation_input_tokens ?? 0;
+      }
+
       if (state.firstPrompt === null && type === "user" && !isSidechain && text) {
         state.firstPrompt = text.slice(0, 200);
         // Check the FULL first user message (not the 200-char preview) — assign-prompt

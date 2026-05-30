@@ -2,12 +2,16 @@
 // src/components/Dashboard.astro — warm empty-state shown when no session is selected.
 import { getDb } from "../db/init";
 import { getIndexStats } from "../db/stats";
-import { getActivityByDay, getToolUsage } from "../db/analytics";
+import { getActivityByDay, getToolUsage, getSpend } from "../db/analytics";
+import { formatUsd } from "../lib/pricing";
 import { CLAUDE_PROJECTS_DIR } from "../paths";
 
 const db = getDb();
 const stats = getIndexStats(db);
 const isEmpty = stats.totalSessions === 0;
+const spend = getSpend(db);
+const fmtTok = (n: number) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n));
+const spendMax = Math.max(1, ...spend.byModel.map((m) => m.costUsd));
 const activity = getActivityByDay(db);
 const tools = getToolUsage(db).slice(0, 12);
 
@@ -52,13 +56,31 @@ const totalTools = tools.reduce((s, t) => s + t.count, 0);
   <div class="flex gap-3 flex-wrap mb-8">
     {[["sessions", stats.totalSessions.toLocaleString(), "var(--text)"],
       ["messages", stats.totalMessages.toLocaleString(), "var(--text)"],
-      ["with compacts", String(stats.sessionsWithCompacts), "var(--c-orange)"]].map(([label, val, color]) => (
+      ["with compacts", String(stats.sessionsWithCompacts), "var(--c-orange)"],
+      ["tokens", fmtTok(spend.totalTokens), "var(--text)"],
+      ["est. AI spend", formatUsd(spend.totalCostUsd), "var(--amber-bright)"]].map(([label, val, color]) => (
       <div class="rounded-xl px-5 py-4" style="background:var(--panel); border:1px solid var(--border-soft);">
         <div class="font-serif text-[28px]" style={`color:${color};`}>{val}</div>
         <div class="text-[12px] uppercase tracking-wider" style="color:var(--text-faint);">{label}</div>
       </div>
     ))}
   </div>
+
+  {spend.byModel.length > 0 && (
+    <>
+      <h3 class="font-serif text-[16px] mb-3" style="color:var(--text);">AI spend by model <span class="text-[12px]" style="color:var(--text-faint);">(estimated)</span></h3>
+      <div class="rounded-xl p-4 mb-8" style="background:var(--panel); border:1px solid var(--border-soft);">
+        {spend.byModel.map((m) => (
+          <div class="flex items-center gap-3 mb-1.5">
+            <span class="font-mono-w text-[12px] w-44 shrink-0 truncate" style="color:var(--text-dim);">{m.model}</span>
+            <span class="track"><span class="bar" style={`width:${Math.max(2, (m.costUsd / spendMax) * 100)}%;`}></span></span>
+            <span class="font-mono-w text-[11.5px] w-24 text-right tabular-nums shrink-0" style="color:var(--amber-bright);">{formatUsd(m.costUsd)}</span>
+          </div>
+        ))}
+        <div class="text-[11px] mt-2.5" style="color:var(--text-faint);">Estimated from captured token counts × public per-model rates — not exact billing.</div>
+      </div>
+    </>
+  )}
 
   <h3 class="font-serif text-[16px] mb-3" style="color:var(--text);">Activity</h3>
   <div class="rounded-xl p-4 mb-8" style="background:var(--panel); border:1px solid var(--border-soft);">

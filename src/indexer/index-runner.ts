@@ -118,6 +118,7 @@ export async function indexAll(
       aiTitle: state.customTitle ?? state.aiTitle,
       cwd: state.cwd,
       indexedAt: Date.now(),
+      tokenUsage: Object.keys(state.tokenUsage).length > 0 ? state.tokenUsage : null,
     };
 
     const tx = db.transaction(() => {

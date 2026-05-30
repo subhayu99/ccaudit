@@ -1,4 +1,39 @@
 import type Database from "better-sqlite3";
+import { modelCostUsd, type TokenUsage } from "../lib/pricing.js";
+
+export type ModelSpend = { model: string; tokens: number; costUsd: number };
+export type Spend = { totalCostUsd: number; totalTokens: number; byModel: ModelSpend[] };
+
+/** Aggregate estimated AI spend across all indexed sessions, from captured per-model token usage. */
+export function getSpend(db: Database.Database): Spend {
+  const rows = db
+    .prepare("SELECT token_usage FROM sessions WHERE token_usage IS NOT NULL")
+    .all() as Array<{ token_usage: string }>;
+  const byModel = new Map<string, { tokens: number; costUsd: number }>();
+  let totalCostUsd = 0;
+  let totalTokens = 0;
+  for (const r of rows) {
+    let usage: TokenUsage;
+    try { usage = JSON.parse(r.token_usage) as TokenUsage; } catch { continue; }
+    for (const [model, u] of Object.entries(usage)) {
+      const tokens = u.input + u.output + u.cacheRead + u.cacheCreation;
+      const cost = modelCostUsd(model, u);
+      totalTokens += tokens;
+      totalCostUsd += cost;
+      const e = byModel.get(model) ?? { tokens: 0, costUsd: 0 };
+      e.tokens += tokens;
+      e.costUsd += cost;
+      byModel.set(model, e);
+    }
+  }
+  return {
+    totalCostUsd,
+    totalTokens,
+    byModel: [...byModel.entries()]
+      .map(([model, v]) => ({ model, ...v }))
+      .sort((a, b) => b.costUsd - a.costUsd),
+  };
+}
 
 export type DayActivity = {
   day: string; // "YYYY-MM-DD"

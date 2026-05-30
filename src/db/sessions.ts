@@ -18,6 +18,7 @@ type SessionRowSql = {
   first_prompt: string | null;
   ai_title: string | null;
   cwd: string | null;
+  token_usage: string | null;
   indexed_at: number;
 };
 
@@ -39,7 +40,13 @@ function rowToSession(r: SessionRowSql): Session {
     aiTitle: r.ai_title,
     cwd: r.cwd,
     indexedAt: r.indexed_at,
+    tokenUsage: parseTokenUsage(r.token_usage),
   };
+}
+
+function parseTokenUsage(raw: string | null): Session["tokenUsage"] {
+  if (!raw) return null;
+  try { return JSON.parse(raw) as Session["tokenUsage"]; } catch { return null; }
 }
 
 export function upsertSession(db: Database.Database, s: Session): void {
@@ -47,11 +54,11 @@ export function upsertSession(db: Database.Database, s: Session): void {
     `INSERT INTO sessions
        (id, project_dir, project_label, file_path, file_mtime, file_size,
         started_at, last_activity, git_branch, message_count, user_msg_count,
-        compact_count, first_prompt, ai_title, cwd, indexed_at)
+        compact_count, first_prompt, ai_title, cwd, token_usage, indexed_at)
      VALUES
        (@id, @projectDir, @projectLabel, @filePath, @fileMtime, @fileSize,
         @startedAt, @lastActivity, @gitBranch, @messageCount, @userMsgCount,
-        @compactCount, @firstPrompt, @aiTitle, @cwd, @indexedAt)
+        @compactCount, @firstPrompt, @aiTitle, @cwd, @tokenUsage, @indexedAt)
      ON CONFLICT(id) DO UPDATE SET
        project_dir   = excluded.project_dir,
        project_label = excluded.project_label,
@@ -67,8 +74,9 @@ export function upsertSession(db: Database.Database, s: Session): void {
        first_prompt  = excluded.first_prompt,
        ai_title      = COALESCE(excluded.ai_title, sessions.ai_title),
        cwd           = excluded.cwd,
+       token_usage   = excluded.token_usage,
        indexed_at    = excluded.indexed_at`
-  ).run(s);
+  ).run({ ...s, tokenUsage: s.tokenUsage ? JSON.stringify(s.tokenUsage) : null });
 }
 
 export function getSession(db: Database.Database, id: string): Session | null {

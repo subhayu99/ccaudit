@@ -11,6 +11,7 @@ import { cleanPromptText } from "../lib/clean-prompt";
 import { segmentSession } from "../lib/segment";
 import { getLabels, spineHash } from "../db/labels";
 import { posixQuote } from "../lib/shell";
+import { sessionCostUsd, formatUsd, totalTokens } from "../lib/pricing";
 
 interface Props { sessionId: string; }
 const { sessionId } = Astro.props;
@@ -114,6 +115,7 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
       <div class="flex items-center gap-4 mt-3 text-[12.5px] flex-wrap" style="color:var(--text-dim);">
         <span>{session.messageCount.toLocaleString()} messages</span>
         {session.compactCount > 0 && <span style="color:var(--c-orange);">⊟ {session.compactCount} compacts</span>}
+        {session.tokenUsage && <span style="color:var(--amber);" title={`${totalTokens(session.tokenUsage).toLocaleString()} tokens (estimated cost)`}>~{formatUsd(sessionCostUsd(session.tokenUsage))}</span>}
         {noiseCount > 0 && <span style="color:var(--text-faint);">{noiseCount} hidden</span>}
         <span>{formatTimestamp(session.startedAt)} → {formatTimestamp(session.lastActivity)}</span>
         <button id="resume-btn" class="resume">▶ Resume session</button>

@@ -1,3 +1,5 @@
+import type { TokenUsage } from "./lib/pricing.js";
+
 // Session row mirrored from SQLite. `null` where the source value was missing.
 export type Session = {
   id: string;
@@ -16,6 +18,8 @@ export type Session = {
   aiTitle: string | null;
   cwd: string | null;
   indexedAt: number;
+  /** Per-model token totals (assistant `message.usage`). null/absent if not yet captured. */
+  tokenUsage?: TokenUsage | null;
 };
 
 export type MessageRow = {
@@ -54,6 +58,13 @@ export type RawMessage = {
   message?: {
     role?: string;
     content?: unknown; // string | Array<{type, text?, ...}>
+    model?: string;
+    usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      cache_read_input_tokens?: number;
+      cache_creation_input_tokens?: number;
+    };
   };
   // ai-title messages carry the title in `aiTitle`; user-set titles in `customTitle`.
   // (`title` kept for backward-compat with any older log shape.)
