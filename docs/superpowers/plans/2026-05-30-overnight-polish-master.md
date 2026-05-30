@@ -34,3 +34,9 @@ Dimensions: architecture/code-quality, performance/scalability, UX/product criti
 - 169 tests green, tsc/astro clean, tree clean at start.
 - Key files: `src/labeling/{label-segments,cluster-topics}.ts`, `src/db/{topics,labels,library,graph,repo-graph}.ts`, `src/lib/segment.ts`, `src/components/{Sidebar,SessionReader,SessionListPane,Dashboard}.astro`, `src/pages/{index,graph,search,projects}.astro`, `src/pages/api/{label,cluster,exclusions}.ts`.
 - Open design item: Layer 2b (immediate same-sitting pivot detection) — optional.
+
+## Progress log
+- ✅ P0 incremental clustering (commit) — `/api/cluster` default incremental, `force` full re-cluster, `addToTopics`/`assignNewSessions`. Sidebar "Cluster new".
+- ✅ P0 topic graph (commit) — `getTopicGraphData`, Topics tab in `/graph?view=topics` (topic→session), verified 13 topics/115 sessions.
+- ⏳ Audit workflow running (wf_57121064-51a) → writes docs/audit/*.md + BACKLOG.md.
+- NEXT (post-audit): work BACKLOG P0→P1→P2; verify each; finish with docs/audit/REPORT.md.
