@@ -7,6 +7,7 @@ import { classifyMessage } from "../lib/message-kind";
 import { renderMarkdown } from "../lib/markdown";
 import { formatTimestamp, truncate, shortSessionId } from "../lib/render";
 import { cleanPromptText } from "../lib/clean-prompt";
+import { segmentSession } from "../lib/segment";
 import { INDEX_DB_PATH } from "../paths";
 
 interface Props { sessionId: string; }
@@ -33,6 +34,11 @@ const allVisible = classified.filter((c) => c.kind !== "noise");
 const CAP = 500;
 const truncatedBy = Math.max(0, allVisible.length - CAP);
 const visible = truncatedBy > 0 ? allVisible.slice(allVisible.length - CAP) : allVisible;
+
+// Deterministic topic-segments over the messages we loaded. Map each segment's
+// opening line to the segment so we can drop a divider before that turn.
+const segments = segmentSession(messages);
+const segByStartLine = new Map(segments.map((s) => [s.startLine, s]));
 
 // Pre-render markdown + tool labels for each visible turn.
 type Block =
@@ -101,10 +107,19 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
       )}
       {blocks.map((b) => (
         b.t === "user" || b.t === "assistant" ? (
-          <div class={`turn ${b.t}`} id={`m${b.lineNo}`}>
-            <div class={`role ${b.t}`}>{b.t === "user" ? "● You" : "✦ Claude"}</div>
-            <div class="bubble prose-warm" set:html={b.html}></div>
-          </div>
+          <Fragment>
+            {segByStartLine.has(b.lineNo) && segByStartLine.get(b.lineNo)!.index > 0 && (
+              <div class="seg-divider" id={`seg${segByStartLine.get(b.lineNo)!.index}`}>
+                <span class="seg-dot"></span>
+                <span class="seg-label">{segByStartLine.get(b.lineNo)!.opener}</span>
+                <span class="seg-meta">{segByStartLine.get(b.lineNo)!.reason === "compact" ? "after compact" : `${segByStartLine.get(b.lineNo)!.gapMinutes}m gap`} · {segByStartLine.get(b.lineNo)!.turnCount} turns</span>
+              </div>
+            )}
+            <div class={`turn ${b.t}`} id={`m${b.lineNo}`}>
+              <div class={`role ${b.t}`}>{b.t === "user" ? "● You" : "✦ Claude"}</div>
+              <div class="bubble prose-warm" set:html={b.html}></div>
+            </div>
+          </Fragment>
         ) : b.t === "compact" ? (
           <div class="compact-divider" id={`m${b.lineNo}`}><span>⊟ Compact #{b.n}</span></div>
         ) : b.t === "tool-use" ? (
@@ -119,7 +134,19 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
       ))}
     </div>
 
-    {landmarks.length > 1 && (
+    {segments.length > 1 && (
+      <nav class="seg-nav" aria-label="segments">
+        <div class="seg-nav-head">{segments.length} threads</div>
+        {segments.map((s) => (
+          <a class="seg-nav-item" href={`#${s.index === 0 ? `m${s.startLine}` : `seg${s.index}`}`}>
+            <span class="seg-nav-dot" data-reason={s.reason}></span>
+            <span class="seg-nav-text">{s.opener}</span>
+          </a>
+        ))}
+      </nav>
+    )}
+
+    {landmarks.length > 1 && segments.length <= 1 && (
       <div class="mini">
         {landmarks.map((l) => (
           <a href={`#m${l.lineNo}`} class={`m ${l.t === "compact" ? "c" : "u"}`} title={l.t === "compact" ? "compact" : "user turn"}></a>
@@ -141,6 +168,17 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
 <style>
   .reader-wrap { position:relative; }
   .convo { padding:24px 28px 80px; }
+  .seg-divider { display:flex; align-items:center; gap:10px; margin:30px 0 20px; padding-top:6px; border-top:1px solid var(--border); max-width:74ch; }
+  .seg-dot { width:9px; height:9px; border-radius:50%; background:var(--violet); flex:none; }
+  .seg-label { font-family:var(--serif); font-size:15px; color:var(--text); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .seg-meta { margin-left:auto; font-size:11px; color:var(--text-faint); font-family:var(--mono); white-space:nowrap; }
+  .seg-nav { position:absolute; right:26px; top:96px; width:200px; max-height:70vh; overflow-y:auto; background:var(--panel); border:1px solid var(--border-soft); border-radius:10px; padding:8px; font-size:12px; }
+  .seg-nav-head { font-size:10.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--text-faint); padding:4px 6px 6px; }
+  .seg-nav-item { display:flex; align-items:center; gap:7px; padding:5px 6px; border-radius:6px; color:var(--text-dim); text-decoration:none; }
+  .seg-nav-item:hover { background:var(--panel-2); color:var(--text); }
+  .seg-nav-dot { width:6px; height:6px; border-radius:50%; flex:none; background:var(--violet); }
+  .seg-nav-dot[data-reason="compact"] { background:var(--c-orange); }
+  .seg-nav-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .trunc-note { background:var(--panel); border:1px dashed var(--border); border-radius:9px; padding:9px 13px; margin-bottom:20px; font-size:12.5px; color:var(--text-faint); max-width:74ch; }
   .turn { margin-bottom:22px; max-width:74ch; }
   .role { font-size:11px; letter-spacing:.08em; text-transform:uppercase; font-weight:700; margin-bottom:7px; }
