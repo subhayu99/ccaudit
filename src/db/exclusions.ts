@@ -46,3 +46,26 @@ export function exclusionCondition(
   });
   return { sql: parts.join(" AND "), params };
 }
+
+/**
+ * Condition keeping a session visible only if NEITHER its `project_dir` NOR its
+ * `cwd` is under an excluded prefix. Lets the user hide either the encoded
+ * project directory (Directories page) or the real working directory / repo
+ * (sidebar). A null cwd is unaffected by cwd matching. For queries over the
+ * `sessions` table (both columns present).
+ */
+export function sessionKeepCondition(
+  db: Database.Database
+): { sql: string; params: Record<string, string> } {
+  const prefixes = listExclusions(db);
+  if (prefixes.length === 0) return { sql: "1", params: {} };
+  const params: Record<string, string> = {};
+  const parts: string[] = [];
+  prefixes.forEach((p, i) => {
+    const k = `sx${i}`;
+    params[k] = p;
+    parts.push(`NOT (project_dir = @${k} OR substr(project_dir, 1, length(@${k}) + 1) = @${k} || '/')`);
+    parts.push(`(cwd IS NULL OR NOT (cwd = @${k} OR substr(cwd, 1, length(@${k}) + 1) = @${k} || '/'))`);
+  });
+  return { sql: parts.join(" AND "), params };
+}

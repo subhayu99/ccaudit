@@ -2,8 +2,9 @@
 // src/components/SessionListPane.astro
 import type { GroupedList } from "../db/library";
 import { formatTimestamp } from "../lib/render";
-interface Props { data: GroupedList; activeSession?: string; }
-const { data, activeSession } = Astro.props;
+interface Props { data: GroupedList; activeSession?: string; selParams?: string; }
+const { data, activeSession, selParams = "" } = Astro.props;
+const sessionHref = (id: string) => (selParams ? `/?${selParams}&session=${id}` : `/?session=${id}`);
 ---
 <div class="px-[18px] pt-4 pb-3" style="border-bottom:1px solid var(--border-soft);">
   {data.header.subtitle && <div class="text-[12px] font-mono-w" style="color:var(--text-faint);">{data.header.subtitle}</div>}
@@ -17,7 +18,7 @@ const { data, activeSession } = Astro.props;
     <>
       <div class="text-[11px] tracking-wider uppercase px-2.5 pt-3.5 pb-1.5 font-semibold" style="color:var(--text-faint);">{g.label}</div>
       {g.items.map((it) => (
-        <a href={`/?session=${it.id}`} class="card" data-active={it.id === activeSession}>
+        <a href={sessionHref(it.id)} class="card" data-active={it.id === activeSession}>
           <div class="ct-title">{it.title}</div>
           <div class="ct-meta">
             <span class="badge wd">{it.workdirLabel}</span>

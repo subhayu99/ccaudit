@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { listWorkdirs } from "./workdirs.js";
 import { computeRepoComponents } from "../identity/components.js";
-import { exclusionCondition } from "./exclusions.js";
+import { sessionKeepCondition } from "./exclusions.js";
 import { cleanPromptText } from "../lib/clean-prompt.js";
 
 export type DayLabel = "Today" | "Yesterday" | "Earlier this week" | "Older";
@@ -67,7 +67,7 @@ export function getLibraryTree(db: Database.Database): LibraryTree {
   const { repos, repoByPath } = computeRepoComponents(workdirs);
   const existsByPath = new Map(workdirs.map((w) => [w.path, w.existsOnDisk]));
 
-  const excl = exclusionCondition(db);
+  const excl = sessionKeepCondition(db);
   const rows = db
     .prepare(
       `SELECT id, cwd, ai_title, first_prompt, last_activity AS last_activity,
@@ -136,9 +136,10 @@ const DAY_ORDER: DayLabel[] = ["Today", "Yesterday", "Earlier this week", "Older
 export function listSessionsGrouped(
   db: Database.Database,
   sel: Selection,
-  nowMs: number
+  nowMs: number,
+  precomputedTree?: LibraryTree
 ): GroupedList {
-  const tree = getLibraryTree(db);
+  const tree = precomputedTree ?? getLibraryTree(db);
 
   let items: ListItem[] = [];
   let header: { title: string; subtitle: string | null } = { title: "All sessions", subtitle: null };

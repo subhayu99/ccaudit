@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import type { MessageRow, SearchHit } from "../types.js";
-import { exclusionCondition } from "./exclusions.js";
+import { sessionKeepCondition } from "./exclusions.js";
 
 type MessageRowSql = {
   session_id: string;
@@ -72,13 +72,29 @@ export function getSessionMessages(db: Database.Database, sessionId: string): Me
   return rows.map(rowToMessage);
 }
 
+/** The last `limit` messages (chronological). Avoids loading 17k rows to show a few hundred. */
+export function getSessionMessagesTail(
+  db: Database.Database,
+  sessionId: string,
+  limit: number
+): MessageRow[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM (
+         SELECT * FROM messages WHERE session_id = ? ORDER BY line_no DESC LIMIT ?
+       ) ORDER BY line_no ASC`
+    )
+    .all(sessionId, limit) as MessageRowSql[];
+  return rows.map(rowToMessage);
+}
+
 export function searchMessages(
   db: Database.Database,
   query: string,
   opts: { limit?: number } = {}
 ): SearchHit[] {
   const limit = opts.limit ?? 50;
-  const excl = exclusionCondition(db);
+  const excl = sessionKeepCondition(db);
   // FTS5 snippet(): table, column, before, after, ellipsis, max-tokens
   const rows = db
     .prepare(
@@ -122,7 +138,7 @@ export function searchMessagesExact(
   opts: { limit?: number } = {}
 ): SearchHit[] {
   const limit = opts.limit ?? 50;
-  const excl = exclusionCondition(db);
+  const excl = sessionKeepCondition(db);
   const rows = db
     .prepare(
       `SELECT session_id AS sessionId,
@@ -168,7 +184,7 @@ export function searchMessagesRegex(
       return 0;
     }
   });
-  const excl = exclusionCondition(db);
+  const excl = sessionKeepCondition(db);
   const rows = db
     .prepare(
       `SELECT session_id   AS sessionId,

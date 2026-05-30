@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import type { Session } from "../types.js";
-import { exclusionCondition } from "./exclusions.js";
+import { exclusionCondition, sessionKeepCondition } from "./exclusions.js";
 
 type SessionRowSql = {
   id: string;
@@ -91,7 +91,7 @@ export function listSessions(db: Database.Database, opts: ListSessionsOptions = 
     where.push("project_dir = @projectDir");
     params.projectDir = opts.projectDir;
   }
-  const excl = exclusionCondition(db);
+  const excl = sessionKeepCondition(db);
   where.push(excl.sql);
   Object.assign(params, excl.params);
   const sql = `

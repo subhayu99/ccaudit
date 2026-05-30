@@ -11,22 +11,25 @@ import { INDEX_DB_PATH } from "../../paths.js";
  */
 export const POST: APIRoute = async ({ request }) => {
   let action = "";
-  let prefix = "";
+  let prefixes: string[] = [];
   try {
-    const body = (await request.json()) as { action?: string; prefix?: string };
+    const body = (await request.json()) as { action?: string; prefix?: string; prefixes?: string[] };
     action = String(body.action ?? "");
-    prefix = String(body.prefix ?? "").trim();
+    const raw = body.prefixes ?? (body.prefix !== undefined ? [body.prefix] : []);
+    prefixes = raw.map((p) => String(p).trim()).filter(Boolean);
   } catch {
     return new Response(JSON.stringify({ error: "invalid body" }), { status: 400 });
   }
 
-  if (!prefix || (action !== "add" && action !== "remove")) {
+  if (prefixes.length === 0 || (action !== "add" && action !== "remove")) {
     return new Response(JSON.stringify({ error: "bad request" }), { status: 400 });
   }
 
   const db = openDb(INDEX_DB_PATH);
-  if (action === "add") addExclusion(db, prefix);
-  else removeExclusion(db, prefix);
+  for (const prefix of prefixes) {
+    if (action === "add") addExclusion(db, prefix);
+    else removeExclusion(db, prefix);
+  }
   db.close();
 
   return new Response(JSON.stringify({ ok: true }), {

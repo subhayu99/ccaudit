@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import type { GraphData, GraphNode, GraphLink } from "./graph.js";
 import { listWorkdirs } from "./workdirs.js";
 import { computeRepoComponents } from "../identity/components.js";
-import { exclusionCondition } from "./exclusions.js";
+import { sessionKeepCondition } from "./exclusions.js";
 
 type SessionRow = {
   id: string;
@@ -36,7 +36,7 @@ export function getRepoGraphData(db: Database.Database): GraphData {
   const { repos, repoByPath } = computeRepoComponents(workdirs);
   const existsByPath = new Map(workdirs.map((w) => [w.path, w.existsOnDisk]));
 
-  const excl = exclusionCondition(db);
+  const excl = sessionKeepCondition(db);
   const sessions = db
     .prepare(
       `SELECT id,

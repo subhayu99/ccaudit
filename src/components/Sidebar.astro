@@ -28,7 +28,8 @@ const { tree, activeRepo, activeWorkdir, mode } = Astro.props;
           <button class="caret" aria-label="toggle">›</button>
           <span class="w-2 h-2 rounded-full inline-block" style="background:var(--c-green);"></span>
           <span class="truncate">{repo.displayName}</span>
-          <span class="ml-auto text-[11px]">{repo.sessionCount}</span>
+          <span class="ml-auto text-[11px] ct">{repo.sessionCount}</span>
+          <button class="hide-btn" title={`Hide ${repo.displayName} from all views`} data-hide={JSON.stringify(repo.workdirs.map((w) => w.path))}>✕</button>
         </a>
         <div class="children">
           {repo.workdirs.map((w) => (
@@ -36,7 +37,8 @@ const { tree, activeRepo, activeWorkdir, mode } = Astro.props;
                class="lib-item child" data-active={w.path === activeWorkdir} style={w.existsOnDisk ? "" : "opacity:.5;"}>
               <span class="w-1.5 h-1.5 rounded-full inline-block" style={`background:${w.existsOnDisk ? "var(--violet)" : "var(--text-faint)"};`}></span>
               <span class="truncate">{w.label}{w.existsOnDisk ? "" : " · deleted"}</span>
-              <span class="ml-auto text-[11px]">{w.sessionCount}</span>
+              <span class="ml-auto text-[11px] ct">{w.sessionCount}</span>
+              <button class="hide-btn" title={`Hide ${w.label}`} data-hide={JSON.stringify([w.path])}>✕</button>
             </a>
           ))}
         </div>
@@ -66,6 +68,10 @@ const { tree, activeRepo, activeWorkdir, mode } = Astro.props;
   .repo-group[data-open="true"] .caret { transform:rotate(90deg); }
   .children { display:none; }
   .repo-group[data-open="true"] .children { display:block; }
+  .hide-btn { display:none; background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:11px; padding:0 2px; margin-left:6px; }
+  .hide-btn:hover { color:var(--c-orange); }
+  .lib-item:hover .hide-btn { display:inline; }
+  .lib-item:hover .ct { display:none; }
 </style>
 
 <script>
@@ -75,6 +81,26 @@ const { tree, activeRepo, activeWorkdir, mode } = Astro.props;
       e.preventDefault(); e.stopPropagation();
       const group = (e.currentTarget as HTMLElement).closest(".repo-group") as HTMLElement;
       group.dataset.open = group.dataset.open === "true" ? "false" : "true";
+    });
+  });
+
+  // Hide a repo (all its workdirs) or a single workdir from every view.
+  document.querySelectorAll(".hide-btn").forEach((b) => {
+    b.addEventListener("click", async (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const el = e.currentTarget as HTMLButtonElement;
+      let prefixes: string[] = [];
+      try { prefixes = JSON.parse(el.dataset.hide || "[]"); } catch {}
+      if (!prefixes.length) return;
+      el.disabled = true;
+      try {
+        const res = await fetch("/api/exclusions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "add", prefixes }),
+        });
+        if (res.ok) window.location.href = "/"; else el.disabled = false;
+      } catch { el.disabled = false; }
     });
   });
 </script>

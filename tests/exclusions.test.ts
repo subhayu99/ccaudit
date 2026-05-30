@@ -10,6 +10,7 @@ import {
   listExclusions,
   isExcludedPath,
   exclusionCondition,
+  sessionKeepCondition,
 } from "../src/db/exclusions.js";
 import type { Session } from "../src/types.js";
 
@@ -76,5 +77,20 @@ describe("db/exclusions", () => {
       }>
     ).map((r) => r.id);
     expect(ids.sort()).toEqual(["keep", "sibling"]); // obs + child excluded, sibling kept
+  });
+
+  it("sessionKeepCondition hides a session whose CWD is under an excluded prefix", () => {
+    const db = openDb(dbPath);
+    // project_dir is the encoded ~/.claude/projects path; cwd is the real workdir
+    upsertSession(db, { ...session("keep", "/proj/a"), cwd: "/Users/me/repos/keep" });
+    upsertSession(db, { ...session("hideByCwd", "/proj/b"), cwd: "/Users/me/conductor/backend/delhi" });
+    upsertSession(db, { ...session("nullcwd", "/proj/c"), cwd: null });
+    addExclusion(db, "/Users/me/conductor/backend");
+
+    const ex = sessionKeepCondition(db);
+    const ids = (
+      db.prepare(`SELECT id FROM sessions WHERE ${ex.sql} ORDER BY id`).all(ex.params) as Array<{ id: string }>
+    ).map((r) => r.id);
+    expect(ids.sort()).toEqual(["keep", "nullcwd"]); // hideByCwd excluded; null cwd unaffected
   });
 });

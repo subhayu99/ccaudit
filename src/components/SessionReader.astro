@@ -2,7 +2,7 @@
 // src/components/SessionReader.astro — warm-obsidian in-shell transcript reader.
 import { openDb } from "../db/init";
 import { getSession } from "../db/sessions";
-import { getSessionMessages } from "../db/messages";
+import { getSessionMessages, getSessionMessagesTail } from "../db/messages";
 import { classifyMessage } from "../lib/message-kind";
 import { renderMarkdown } from "../lib/markdown";
 import { formatTimestamp, truncate, shortSessionId } from "../lib/render";
@@ -14,7 +14,15 @@ const { sessionId } = Astro.props;
 
 const db = openDb(INDEX_DB_PATH);
 const session = getSession(db, sessionId);
-const messages = session ? getSessionMessages(db, sessionId) : [];
+// Only load what we'll render: the tail for huge sessions (raw includes noise,
+// so load generously — visible turns get capped below).
+const RAW_TAIL = 2500;
+const tailLoaded = !!session && session.messageCount > RAW_TAIL;
+const messages = !session
+  ? []
+  : tailLoaded
+    ? getSessionMessagesTail(db, sessionId, RAW_TAIL)
+    : getSessionMessages(db, sessionId);
 db.close();
 
 const classified = messages.map((m) => ({ m, kind: classifyMessage(m) }));
@@ -88,8 +96,8 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
     </header>
 
     <div class="convo" id="convo">
-      {truncatedBy > 0 && (
-        <div class="trunc-note">⤒ {truncatedBy.toLocaleString()} earlier turns hidden — showing the latest {visible.length.toLocaleString()}. Full history is preserved in the session file.</div>
+      {(truncatedBy > 0 || tailLoaded) && (
+        <div class="trunc-note">⤒ Showing the latest {visible.length.toLocaleString()} turns — earlier history is hidden for performance and preserved in the session file.</div>
       )}
       {blocks.map((b) => (
         b.t === "user" || b.t === "assistant" ? (

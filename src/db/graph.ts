@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { exclusionCondition } from "./exclusions.js";
+import { sessionKeepCondition } from "./exclusions.js";
 
 export type GraphNodeType = "folder" | "project" | "session" | "repo" | "workdir";
 export type GraphLinkKind =
@@ -87,7 +87,7 @@ function shortPath(p: string, n = 2): string {
  *   simulation), so toggling them never disturbs the layout.
  */
 export function getGraphData(db: Database.Database): GraphData {
-  const excl = exclusionCondition(db);
+  const excl = sessionKeepCondition(db);
   const projects = db
     .prepare(
       `SELECT project_dir   AS projectDir,

@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { exclusionCondition } from "./exclusions.js";
+import { sessionKeepCondition } from "./exclusions.js";
 
 export type IndexStats = {
   totalSessions: number;
@@ -10,7 +10,7 @@ export type IndexStats = {
 };
 
 export function getIndexStats(db: Database.Database): IndexStats {
-  const excl = exclusionCondition(db);
+  const excl = sessionKeepCondition(db);
   const row = db
     .prepare(
       `SELECT
