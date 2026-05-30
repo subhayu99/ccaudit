@@ -5,10 +5,6 @@ import { getSession } from "../db/sessions.js";
 import { INDEX_DB_PATH } from "../paths.js";
 import { clampLimit } from "./limit.js";
 
-function stripMarks(snippet: string): string {
-  return snippet.replace(/<\/?mark>/g, "");
-}
-
 function highlightForTerminal(snippet: string): string {
   return snippet.replace(/<mark>([^<]+)<\/mark>/g, (_, inner) => kleur.yellow().bold(inner));
 }
@@ -25,7 +21,7 @@ export async function searchCommand(query: string, opts: { limit?: string }): Pr
       const sess = getSession(db, h.sessionId);
       const label = sess ? `${sess.projectLabel}/${h.sessionId.slice(0, 8)}` : h.sessionId.slice(0, 8);
       console.log(kleur.bold(label) + kleur.dim(` · line ${h.lineNo}`));
-      console.log("  " + highlightForTerminal(stripMarks(h.snippet) === h.snippet ? h.snippet : h.snippet));
+      console.log("  " + highlightForTerminal(h.snippet));
       console.log();
     }
   } finally {

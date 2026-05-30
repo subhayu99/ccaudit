@@ -5,6 +5,8 @@ import { searchCommand } from "./search.js";
 import { doctorCommand } from "./doctor.js";
 import { serveCommand } from "./serve.js";
 import { mcpCommand } from "./mcp.js";
+import { statsCommand } from "./stats.js";
+import { topicsCommand } from "./topics.js";
 
 const program = new Command();
 program
@@ -37,6 +39,16 @@ program
   .description("Full-text search across all indexed sessions")
   .option("--limit <n>", "max hits", "20")
   .action(searchCommand);
+
+program
+  .command("stats")
+  .description("Show index summary stats and top tool usage")
+  .action(statsCommand);
+
+program
+  .command("topics")
+  .description("List clustered topics with their session counts")
+  .action(topicsCommand);
 
 program
   .command("doctor")
