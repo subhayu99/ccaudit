@@ -100,23 +100,29 @@ export function getSessionMessagesHead(
   return rows.map(rowToMessage);
 }
 
-/** Make arbitrary user input safe for an FTS5 MATCH: quote each whitespace term
- *  (doubling internal quotes) so operators/punctuation are treated literally. */
+/** Quote each whitespace term (doubling internal quotes) so operators/punctuation in arbitrary
+ *  user input are treated literally by FTS5 MATCH. */
+function ftsTerms(query: string): string[] {
+  return query.split(/\s+/).filter(Boolean).map((t) => `"${t.replace(/"/g, '""')}"`);
+}
+
+/** Default (AND): every term must appear — precise search. */
 export function escapeFtsQuery(query: string): string {
-  return query
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((t) => `"${t.replace(/"/g, '""')}"`)
-    .join(" ");
+  return ftsTerms(query).join(" ");
+}
+
+/** OR: match any term — recall-oriented retrieval (RAG), ranked by bm25. */
+export function escapeFtsQueryAny(query: string): string {
+  return ftsTerms(query).join(" OR ");
 }
 
 export function searchMessages(
   db: Database.Database,
   query: string,
-  opts: { limit?: number } = {}
+  opts: { limit?: number; match?: "all" | "any" } = {}
 ): SearchHit[] {
   const limit = opts.limit ?? 50;
-  const ftsQuery = escapeFtsQuery(query);
+  const ftsQuery = opts.match === "any" ? escapeFtsQueryAny(query) : escapeFtsQuery(query);
   if (!ftsQuery) return [];
   const excl = sessionKeepCondition(db);
   // When no exclusions are set, omit the session-id subquery entirely: it would
@@ -137,7 +143,7 @@ export function searchMessages(
         ORDER BY rank ASC
         LIMIT @limit`
     )
-    .all({ q: query, limit, ...excl.params }) as Array<{
+    .all({ q: ftsQuery, limit, ...excl.params }) as Array<{
     sessionId: string;
     lineNo: number;
     snippet: string;
