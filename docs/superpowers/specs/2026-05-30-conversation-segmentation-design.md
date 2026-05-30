@@ -84,7 +84,20 @@ No AI, no naming beyond the free opener, no cross-session linking, no persistenc
 
 ---
 
-## Layer 2 — semantic enrichment (later, separate spec + plan)
+## Layer 2 — semantic enrichment (built on Layer 1)
+
+### Feasibility validated (2026-05-30, prototype on real data)
+
+- `claude -p <prompt> --model haiku --output-format json` works headlessly; parse `.result` (a JSON array). Everyone with Claude Code has this — no API keys, **local**.
+- **Label quality with Haiku is excellent.** Real outputs: "Now give me the plan again…" → *Plan Review And Approval*; "I don't want any follow-ups, fix all the gaps…" → *Gaps Closure Requirements*; "I split the single PR into 5…" → *Review Split PRs Comments*.
+- **Economics:** ~**$0.03/session**, ~**60 s/session** (the `claude -p` harness startup dominates; a trivial call already costs ~$0.09 on the default model — hence Haiku + one batched call per session). ~$9 / ~4.5 h serial for all 270 → must be **on-demand per session + cached**, optionally a background batch; never a blocking "label everything" button.
+- **Hard rules:** one `claude -p` call **per session** (labels all its segments at once), **never per-segment**; cache keyed on a spine signature so we only re-label when the spine changes; labels are AI (non-deterministic) → **pinned, marked as AI, and only annotate** — they never move Layer-1 boundaries.
+
+### Decomposition (each its own plan)
+
+- **2a — Segment naming (do first).** Batched Haiku call names a session's segments; cached; shown in the reader (✨-marked) over the deterministic opener. Proven above.
+- **2b — Immediate-pivot detection.** Claude subdivides a long no-gap segment where the topic changed mid-sitting. Annotates only.
+- **2c — Cross-session topic threads.** Cluster 2a's labels across all sessions into topics; a new WHAT-axis in the graph/sidebar linking conversations "from one to another."
 
 Built on the same spine; opt-in; cached.
 
