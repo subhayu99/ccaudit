@@ -87,6 +87,20 @@ introduce flakiness.
   per-model bars, a per-session `~$cost` in the reader header, and `ccaudit stats`. Verified on the
   real index (~11.5B tokens, ~$27.8k estimated).
 
+## Follow-up P2 batch (user-selected)
+
+- **Reader: collapsible thread index + Load-earlier.** The right-hand thread nav collapses to a 34px
+  dot rail and expands to full labels on hover (click a thread to scroll the chat there). "Load
+  earlier" raises the rendered window (`?show=`) preserving context.
+- **Graph lazy-load / cap.** `capSessionsPerHub` keeps the newest 12 sessions per hub (hubs keep full
+  counts), bounding the force-sim payload; clicking any hub (repo/workdir/topic/project) opens its list.
+- **Ask-your-history (RAG).** `/ask` + `/api/ask`: OR-retrieve top spans → `claude -p` answer with
+  inline `[n]` citations that deep-link to `/?session=#m<line>`, plus a Sources list. **Also fixed a
+  real latent crash:** `searchMessages` was binding the *unescaped* query to FTS MATCH, so any query
+  with `?`/operators threw `fts5: syntax error` (the P0#5 escaping never actually applied).
+- **Topic management.** Rename / merge / delete topics from the sidebar (rename-to-existing-name
+  merges); `/api/topics` PATCH/POST/DELETE. Fixes messy cluster names without a re-cluster.
+
 ## Remaining / known issues (recommended next session)
 
 1. **Graph payload (P1 #7, the heavy half).** The ⌘K palette is now capped, but `/graph` still ships
