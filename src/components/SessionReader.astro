@@ -105,7 +105,7 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
   </div>
 ) : (
   <div class="reader-wrap">
-    <header class="px-7 pt-6 pb-4" style="border-bottom:1px solid var(--border-soft);">
+    <header class="reader-head px-7 pt-6 pb-4" style="border-bottom:1px solid var(--border-soft);">
       <div class="text-[12px] mb-1.5 flex items-center gap-2" style="color:var(--text-faint);">
         <a href="/" style="color:var(--text-faint); text-decoration:none;">← Library</a>
         {session.gitBranch && <><span>·</span><span class="font-mono-w">{session.gitBranch}</span></>}
@@ -188,13 +188,16 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
 )}
 
 <style>
+  /* The reader pane (.shell-reader) is the scroll container. The header sticks to its top and
+     the thread nav is fixed, so neither scrolls away; JS opens the pane at the bottom. */
   .reader-wrap { position:relative; }
+  .reader-head { position:sticky; top:0; z-index:10; background:var(--canvas); }
   .convo { padding:24px 28px 80px; }
   .seg-divider { display:flex; align-items:center; gap:10px; margin:30px 0 20px; padding-top:6px; border-top:1px solid var(--border); max-width:74ch; }
   .seg-dot { width:9px; height:9px; border-radius:50%; background:var(--violet); flex:none; }
   .seg-label { font-family:var(--serif); font-size:15px; color:var(--text); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .seg-meta { margin-left:auto; font-size:11px; color:var(--text-faint); font-family:var(--mono); white-space:nowrap; }
-  .seg-nav { position:absolute; right:26px; top:96px; width:200px; max-height:70vh; overflow-y:auto; background:var(--panel); border:1px solid var(--border-soft); border-radius:10px; padding:8px; font-size:12px; }
+  .seg-nav { position:fixed; right:26px; top:118px; width:200px; max-height:calc(100vh - 150px); overflow-y:auto; background:var(--panel); border:1px solid var(--border-soft); border-radius:10px; padding:8px; font-size:12px; z-index:20; }
   .seg-nav-head { font-size:10.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--text-faint); padding:4px 6px 6px; }
   .seg-nav-item { display:flex; align-items:center; gap:7px; padding:5px 6px; border-radius:6px; color:var(--text-dim); text-decoration:none; }
   .seg-nav-item:hover { background:var(--panel-2); color:var(--text); }
@@ -235,7 +238,9 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
   .prose-warm :global(a) { color:var(--amber); }
   .prose-warm :global(ul), .prose-warm :global(ol) { margin:0 0 10px; padding-left:22px; }
   .prose-warm :global(h1), .prose-warm :global(h2), .prose-warm :global(h3) { font-family:var(--serif); color:var(--text); margin:14px 0 8px; }
-  .mini { position:absolute; right:8px; top:96px; bottom:20px; width:8px; display:flex; flex-direction:column; gap:3px; align-items:center; }
+  .mini { position:fixed; right:8px; top:118px; bottom:20px; width:8px; display:flex; flex-direction:column; gap:3px; align-items:center; z-index:20; }
+  /* On narrow screens the thread rail/minimap would overlay the transcript — hide them. */
+  @media (max-width: 900px) { .seg-nav, .mini { display:none; } }
   .mini .m { width:5px; height:8px; border-radius:3px; background:var(--border); display:block; }
   .mini .m.u { background:var(--amber); width:8px; }
   .mini .m.c { background:var(--c-orange); width:8px; }
@@ -286,16 +291,23 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
   }
 </script>
 <script is:inline>
-  // Deep-link from search: /?session=<id>#m<lineNo> scrolls to and briefly highlights the match.
+  // The conversation opens at its END (latest turn) — scroll up to see earlier history, like a
+  // chat. A search deep-link (/?session=<id>#m<lineNo>) overrides this to the matched turn.
   (function () {
+    const scroller = document.querySelector(".shell-reader");
     const hash = location.hash;
-    if (!/^#m\d+$/.test(hash)) return;
-    const el = document.getElementById(hash.slice(1));
-    if (!el) return;
+    const target = /^#m\d+$/.test(hash) ? document.getElementById(hash.slice(1)) : null;
+    const toBottom = () => { if (scroller) scroller.scrollTop = scroller.scrollHeight; };
     requestAnimationFrame(() => {
-      el.scrollIntoView({ block: "center" });
-      el.classList.add("deep-hit");
-      setTimeout(() => el.classList.remove("deep-hit"), 2400);
+      if (target) {
+        target.scrollIntoView({ block: "center" });
+        target.classList.add("deep-hit");
+        setTimeout(() => target.classList.remove("deep-hit"), 2400);
+      } else {
+        toBottom();
+        // Re-pin after late layout shifts (web-font swap, etc.).
+        setTimeout(toBottom, 60);
+      }
     });
   })();
 </script>
