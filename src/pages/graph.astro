@@ -4,13 +4,15 @@ import Sidebar from "../components/Sidebar.astro";
 import { openDb } from "../db/init";
 import { getGraphData } from "../db/graph";
 import { getRepoGraphData } from "../db/repo-graph";
+import { getTopicGraphData } from "../db/topic-graph";
 import { getLibraryTree } from "../db/library";
 import { INDEX_DB_PATH } from "../paths";
 
-const view = Astro.url.searchParams.get("view") === "repos" ? "repos" : "folders";
+const vparam = Astro.url.searchParams.get("view");
+const view = vparam === "repos" ? "repos" : vparam === "topics" ? "topics" : "folders";
 
 const db = openDb(INDEX_DB_PATH);
-const graph = view === "repos" ? getRepoGraphData(db) : getGraphData(db);
+const graph = view === "topics" ? getTopicGraphData(db) : view === "repos" ? getRepoGraphData(db) : getGraphData(db);
 const tree = getLibraryTree(db);
 db.close();
 
@@ -27,7 +29,16 @@ const graphJson = JSON.stringify(graph);
   <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
     <h1 class="font-serif text-2xl font-semibold" style="color:var(--text);">Graph</h1>
     <div class="flex items-center gap-4 text-sm" style="color:var(--text-dim);">
-      {view === "repos" ? (
+      {view === "topics" ? (
+        <>
+          <span class="flex items-center gap-1.5">
+            <span class="inline-block w-3 h-3 rounded-full bg-amber-500"></span> {count("topic")} topics
+          </span>
+          <span class="flex items-center gap-1.5">
+            <span class="inline-block w-3 h-3 rounded-full bg-blue-500"></span> {count("session")} sessions
+          </span>
+        </>
+      ) : view === "repos" ? (
         <>
           <span class="flex items-center gap-1.5">
             <span class="inline-block w-3 h-3 rounded-full bg-emerald-500"></span> {count("repo")} repos
@@ -65,6 +76,7 @@ const graphJson = JSON.stringify(graph);
     <div class="inline-flex rounded-lg overflow-hidden text-sm" style="border:1px solid var(--border);">
       <a href="/graph" class="gtab" data-on={view === "folders"}>Folders</a>
       <a href="/graph?view=repos" class="gtab" data-on={view === "repos"} style="border-left:1px solid var(--border);">Repos</a>
+      <a href="/graph?view=topics" class="gtab" data-on={view === "topics"} style="border-left:1px solid var(--border);">Topics</a>
     </div>
     <input
       id="graph-search"
@@ -121,8 +133,8 @@ const graphJson = JSON.stringify(graph);
 
     const isDark = !document.documentElement.classList.contains("theme-light");
     const C = isDark
-      ? { folder: "#6f685b", proj: "#9b82d6", sess: "#6fa1d8", sessCompact: "#cf8a4a", edge: "#37312a", cont: "#7fae7a", label: "#a39a87", folderLabel: "#6f685b", stroke: "#1b1916", repo: "#7fae7a", workdir: "#9b82d6", workdirGone: "#6f685b" }
-      : { folder: "#9a917d", proj: "#7c5cc4", sess: "#3b6fa8", sessCompact: "#b9722f", edge: "#d8cfba", cont: "#5a8a55", label: "#6b6452", folderLabel: "#9a917d", stroke: "#f5f1e8", repo: "#5a8a55", workdir: "#7c5cc4", workdirGone: "#c9c0ad" };
+      ? { folder: "#6f685b", proj: "#9b82d6", sess: "#6fa1d8", sessCompact: "#cf8a4a", edge: "#37312a", cont: "#7fae7a", label: "#a39a87", folderLabel: "#6f685b", stroke: "#1b1916", repo: "#7fae7a", workdir: "#9b82d6", workdirGone: "#6f685b", topic: "#d2a85f" }
+      : { folder: "#9a917d", proj: "#7c5cc4", sess: "#3b6fa8", sessCompact: "#b9722f", edge: "#d8cfba", cont: "#5a8a55", label: "#6b6452", folderLabel: "#9a917d", stroke: "#f5f1e8", repo: "#5a8a55", workdir: "#7c5cc4", workdirGone: "#c9c0ad", topic: "#b9722f" };
 
     // Split links: structural ones drive the layout; continuation ones are overlay-only.
     const structuralLinks = data.links.filter((l) => l.kind !== "continuation");
@@ -134,12 +146,14 @@ const graphJson = JSON.stringify(graph);
     const repoRadius = (d) => Math.max(9, Math.sqrt(d.workdirCount || 1) * 6);
     const nodeRadius = (d) =>
       d.type === "folder" ? folderRadius(d)
+      : d.type === "topic" ? Math.max(9, Math.sqrt(d.sessionCount || 1) * 5)
       : d.type === "repo" ? repoRadius(d)
       : d.type === "project" ? projRadius(d)
       : d.type === "workdir" ? 7
       : sessRadius(d);
     const nodeFill = (d) =>
       d.type === "folder" ? C.folder
+      : d.type === "topic" ? C.topic
       : d.type === "repo" ? C.repo
       : d.type === "project" ? C.proj
       : d.type === "workdir" ? (d.existsOnDisk ? C.workdir : C.workdirGone)
@@ -260,7 +274,8 @@ const graphJson = JSON.stringify(graph);
         if (event.defaultPrevented) return;
         if (d.type === "session") window.location.href = "/s/" + d.sessionId;
         else if (d.type === "project") window.location.href = "/?project=" + encodeURIComponent(d.projectDir);
-        // folder click: no-op (it's a visual grouping)
+        else if (d.type === "topic") window.location.href = "/?topic=" + d.id.slice(6);
+        // folder/repo/workdir click: no-op (visual grouping)
       });
 
     // Force simulation — only structural links drive layout.

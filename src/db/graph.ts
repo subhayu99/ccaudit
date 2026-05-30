@@ -1,13 +1,14 @@
 import type Database from "better-sqlite3";
 import { sessionKeepCondition } from "./exclusions.js";
 
-export type GraphNodeType = "folder" | "project" | "session" | "repo" | "workdir";
+export type GraphNodeType = "folder" | "project" | "session" | "repo" | "workdir" | "topic";
 export type GraphLinkKind =
   | "session-project"
   | "project-folder"
   | "continuation"
   | "session-workdir"
-  | "workdir-repo";
+  | "workdir-repo"
+  | "session-topic";
 
 export type GraphNode = {
   id: string;
