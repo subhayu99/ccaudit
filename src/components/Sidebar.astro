@@ -36,7 +36,9 @@ const { tree, topics = [], activeRepo, activeWorkdir, activeTopic, mode } = Astr
       <a href={`/?topic=${tp.id}`} class="lib-item" data-active={tp.id === activeTopic}>
         <span class="w-2 h-2 rounded-full inline-block" style="background:var(--amber);"></span>
         <span class="truncate">{tp.name}</span>
-        <span class="ml-auto text-[11px]">{tp.sessionCount}</span>
+        <span class="ml-auto text-[11px] ct">{tp.sessionCount}</span>
+        <button class="topic-act topic-rename" title="Rename topic — rename to an existing topic's name to merge them" data-id={tp.id} data-name={tp.name}>✎</button>
+        <button class="topic-act topic-del" title="Delete topic (sessions stay indexed, just un-grouped)" data-id={tp.id} data-name={tp.name}>✕</button>
       </a>
     ))}
 
@@ -93,6 +95,13 @@ const { tree, topics = [], activeRepo, activeWorkdir, activeTopic, mode } = Astr
   .lib-item:hover .hide-btn, .lib-item:focus-within .hide-btn { opacity:1; }
   .hide-btn:focus-visible { opacity:1; outline:1px solid var(--amber-bright); outline-offset:1px; border-radius:4px; }
   .hide-btn[disabled] { cursor:default; opacity:.5; }
+  .topic-act { opacity:0; background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:11px; padding:0 2px; margin-left:5px; transition:opacity .12s, color .12s; }
+  .topic-act.topic-del:hover { color:var(--c-orange); opacity:1; }
+  .topic-act.topic-rename:hover { color:var(--amber-bright); opacity:1; }
+  .lib-item:hover .topic-act, .lib-item:focus-within .topic-act { opacity:.5; }
+  .lib-item:hover .topic-act:hover { opacity:1; }
+  .topic-act:focus-visible { opacity:1; outline:1px solid var(--amber-bright); outline-offset:1px; border-radius:4px; }
+  .topic-act[disabled] { cursor:default; opacity:.4; }
   /* Thin top-of-viewport progress bar shown the instant a destructive action fires. */
   #topbar-progress { position:fixed; top:0; left:0; height:2px; width:0; z-index:60; background:linear-gradient(90deg,var(--amber),var(--c-orange)); opacity:0; pointer-events:none; transition:width .3s ease, opacity .2s; }
   #topbar-progress.active { opacity:1; width:88%; transition:width 8s cubic-bezier(.1,.7,.2,1), opacity .15s; }
@@ -150,6 +159,40 @@ const { tree, topics = [], activeRepo, activeWorkdir, activeTopic, mode } = Astr
         if (res.ok) { window.location.href = "/"; }
         else { hideInFlight = false; el.disabled = false; stopProgress(); }
       } catch { hideInFlight = false; el.disabled = false; stopProgress(); }
+    });
+  });
+
+  // Topic management: rename (rename to an existing name = merge) + delete.
+  let topicInFlight = false;
+  async function mutateTopic(method: string, payload: Record<string, unknown>, btn: HTMLButtonElement) {
+    if (topicInFlight) return;
+    topicInFlight = true; btn.disabled = true; startProgress();
+    try {
+      const res = await fetch("/api/topics", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      if (res.ok) { window.location.reload(); return; }
+      const d = await res.json().catch(() => ({}));
+      alert((d && d.error) || "Action failed");
+    } catch (err) { alert("Action failed: " + (err && (err as Error).message)); }
+    topicInFlight = false; btn.disabled = false; stopProgress();
+  }
+  document.querySelectorAll(".topic-rename").forEach((b) => {
+    b.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const el = e.currentTarget as HTMLButtonElement;
+      const cur = el.dataset.name || "";
+      const name = prompt("Rename topic (use an existing topic's exact name to merge them):", cur);
+      if (name == null) return;
+      const trimmed = name.trim();
+      if (!trimmed || trimmed === cur) return;
+      mutateTopic("PATCH", { id: Number(el.dataset.id), name: trimmed }, el);
+    });
+  });
+  document.querySelectorAll(".topic-del").forEach((b) => {
+    b.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const el = e.currentTarget as HTMLButtonElement;
+      if (!confirm(`Delete topic "${el.dataset.name}"? Its sessions stay indexed — they just become un-grouped.`)) return;
+      mutateTopic("DELETE", { id: Number(el.dataset.id) }, el);
     });
   });
 </script>

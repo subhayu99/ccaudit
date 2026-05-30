@@ -53,6 +53,50 @@ export function addToTopics(db: Database.Database, clusters: TopicCluster[]): vo
   tx();
 }
 
+/** Rename a topic. Returns false on empty name or a case-insensitive clash with another topic. */
+export function renameTopic(db: Database.Database, id: number, name: string): boolean {
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  const clash = db
+    .prepare("SELECT id FROM topics WHERE name = ? COLLATE NOCASE AND id <> ?")
+    .get(trimmed, id) as { id: number } | undefined;
+  if (clash) return false;
+  return db.prepare("UPDATE topics SET name = ? WHERE id = ?").run(trimmed, id).changes > 0;
+}
+
+/** Delete a topic and its membership rows (its sessions become "unclustered" again). */
+export function deleteTopic(db: Database.Database, id: number): void {
+  db.transaction(() => {
+    db.prepare("DELETE FROM topic_members WHERE topic_id = ?").run(id);
+    db.prepare("DELETE FROM topics WHERE id = ?").run(id);
+  })();
+}
+
+/** Merge `sourceIds` into `intoId`: re-point members (dedup), then drop the emptied source topics. */
+export function mergeTopics(db: Database.Database, sourceIds: number[], intoId: number): void {
+  const sources = sourceIds.filter((s) => s !== intoId);
+  if (sources.length === 0) return;
+  db.transaction(() => {
+    const move = db.prepare(
+      "INSERT OR IGNORE INTO topic_members (topic_id, session_id) SELECT ?, session_id FROM topic_members WHERE topic_id = ?"
+    );
+    for (const s of sources) {
+      move.run(intoId, s);
+      db.prepare("DELETE FROM topic_members WHERE topic_id = ?").run(s);
+      db.prepare("DELETE FROM topics WHERE id = ?").run(s);
+    }
+  })();
+}
+
+/** Another topic (≠ exceptId) with the given name (case-insensitive), if any. */
+export function findTopicByName(db: Database.Database, name: string, exceptId?: number): TopicSummary | null {
+  const row = db
+    .prepare("SELECT id FROM topics WHERE name = ? COLLATE NOCASE AND id <> ?")
+    .get(name.trim(), exceptId ?? -1) as { id: number } | undefined;
+  if (!row) return null;
+  return listTopics(db).find((t) => t.id === row.id) ?? null;
+}
+
 export function getTopic(db: Database.Database, topicId: number): { name: string; sessionIds: string[] } | null {
   const t = db.prepare("SELECT name FROM topics WHERE id = ?").get(topicId) as { name: string } | undefined;
   if (!t) return null;
