@@ -32,6 +32,30 @@ export function parseClusters(resultText: string, items: TopicItem[]): TopicClus
   return out;
 }
 
+/** Incremental: assign NEW sessions into existing topics (by exact name) or new ones. */
+export function buildAssignPrompt(items: TopicItem[], existingTopics: string[]): string {
+  const list = items.map((t, i) => `${i + 1}. ${t.title.replace(/\s+/g, " ").slice(0, 90)}`).join("\n");
+  const existing = existingTopics.length
+    ? `Existing topics (reuse these EXACT names where a session fits):\n${existingTopics.map((n) => `- ${n}`).join("\n")}\n\n`
+    : "";
+  return (
+    `${existing}Below are ${items.length} NEW developer coding-session titles. Assign each to an existing topic ` +
+    `(reuse the exact name) or a new topic; use "Miscellaneous" for one-offs. Output ONLY a JSON array of ` +
+    `{"topic": "<name>", "sessions": [<1-based item numbers>]}.\n\n${list}`
+  );
+}
+
+export function assignNewSessions(
+  items: TopicItem[],
+  existingTopics: string[],
+  opts: { run?: LabelRun } = {}
+): { topics: TopicCluster[]; costUsd: number } {
+  if (items.length === 0) return { topics: [], costUsd: 0 };
+  const run = opts.run ?? defaultClusterRun;
+  const { result, costUsd } = run(buildAssignPrompt(items, existingTopics));
+  return { topics: parseClusters(result, items), costUsd };
+}
+
 export const defaultClusterRun: LabelRun = (prompt) => {
   const raw = execFileSync(
     "claude",

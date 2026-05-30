@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { openDb } from "../src/db/init.js";
-import { replaceTopics, listTopics, getTopic } from "../src/db/topics.js";
+import { replaceTopics, listTopics, getTopic, getClusteredSessionIds, addToTopics } from "../src/db/topics.js";
 
 describe("db/topics", () => {
   let tmp: string, dbp: string;
@@ -27,5 +27,24 @@ describe("db/topics", () => {
     replaceTopics(db, [{ name: "Old", sessionIds: ["a"] }]);
     replaceTopics(db, [{ name: "New", sessionIds: ["b", "c"] }]);
     expect(listTopics(db).map((x) => x.name)).toEqual(["New"]);
+  });
+
+  it("getClusteredSessionIds returns assigned sessions", () => {
+    const db = openDb(dbp);
+    replaceTopics(db, [{ name: "T", sessionIds: ["a", "b"] }]);
+    expect([...getClusteredSessionIds(db)].sort()).toEqual(["a", "b"]);
+  });
+
+  it("addToTopics merges into an existing topic by name and creates new ones", () => {
+    const db = openDb(dbp);
+    replaceTopics(db, [{ name: "Backend", sessionIds: ["a"] }]);
+    addToTopics(db, [
+      { name: "Backend", sessionIds: ["b"] }, // merge (case-insensitive)
+      { name: "Outreach", sessionIds: ["c"] }, // new
+    ]);
+    const t = listTopics(db);
+    expect(t.find((x) => x.name === "Backend")!.sessionCount).toBe(2);
+    expect(getTopic(db, t.find((x) => x.name === "Backend")!.id)!.sessionIds.sort()).toEqual(["a", "b"]);
+    expect(t.find((x) => x.name === "Outreach")!.sessionCount).toBe(1);
   });
 });

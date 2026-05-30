@@ -30,6 +30,29 @@ export function listTopics(db: Database.Database): TopicSummary[] {
     .all() as TopicSummary[];
 }
 
+/** Session ids already assigned to some topic. */
+export function getClusteredSessionIds(db: Database.Database): Set<string> {
+  const rows = db.prepare("SELECT DISTINCT session_id AS s FROM topic_members").all() as Array<{ s: string }>;
+  return new Set(rows.map((r) => r.s));
+}
+
+/** Incrementally merge clusters into the existing set: match a topic by name
+ *  (case-insensitive) or create it, then insert members. Never wipes. */
+export function addToTopics(db: Database.Database, clusters: TopicCluster[]): void {
+  const tx = db.transaction(() => {
+    const findT = db.prepare("SELECT id FROM topics WHERE name = ? COLLATE NOCASE");
+    const insT = db.prepare("INSERT INTO topics (name, created_at) VALUES (?, ?)");
+    const insM = db.prepare("INSERT OR IGNORE INTO topic_members (topic_id, session_id) VALUES (?, ?)");
+    const now = Date.now();
+    for (const c of clusters) {
+      const existing = findT.get(c.name) as { id: number } | undefined;
+      const id = existing ? existing.id : (insT.run(c.name, now).lastInsertRowid as number);
+      for (const sid of c.sessionIds) insM.run(id, sid);
+    }
+  });
+  tx();
+}
+
 export function getTopic(db: Database.Database, topicId: number): { name: string; sessionIds: string[] } | null {
   const t = db.prepare("SELECT name FROM topics WHERE id = ?").get(topicId) as { name: string } | undefined;
   if (!t) return null;
