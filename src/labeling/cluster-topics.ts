@@ -1,5 +1,5 @@
-import { execFileSync } from "node:child_process";
 import type { LabelRun } from "./label-segments.js";
+import { runClaude, parseClaudeJson } from "./run-claude.js";
 
 export type TopicItem = { sessionId: string; title: string };
 export type TopicCluster = { name: string; sessionIds: string[] };
@@ -45,34 +45,33 @@ export function buildAssignPrompt(items: TopicItem[], existingTopics: string[]):
   );
 }
 
-export function assignNewSessions(
+export async function assignNewSessions(
   items: TopicItem[],
   existingTopics: string[],
   opts: { run?: LabelRun } = {}
-): { topics: TopicCluster[]; costUsd: number } {
+): Promise<{ topics: TopicCluster[]; costUsd: number }> {
   if (items.length === 0) return { topics: [], costUsd: 0 };
   const run = opts.run ?? defaultClusterRun;
-  const { result, costUsd } = run(buildAssignPrompt(items, existingTopics));
+  const { result, costUsd } = await run(buildAssignPrompt(items, existingTopics));
   return { topics: parseClusters(result, items), costUsd };
 }
 
-export const defaultClusterRun: LabelRun = (prompt) => {
-  const raw = execFileSync(
-    "claude",
+export const defaultClusterRun: LabelRun = async (prompt) => {
+  const raw = await runClaude(
     ["-p", prompt, "--model", "haiku", "--output-format", "json"],
-    { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, timeout: 600_000 }
+    { timeoutMs: 600_000, maxBuffer: 32 * 1024 * 1024 }
   );
-  const o = JSON.parse(raw) as { result?: string; total_cost_usd?: number; is_error?: boolean };
+  const o = parseClaudeJson(raw);
   if (o.is_error) throw new Error("claude -p returned an error");
   return { result: o.result ?? "[]", costUsd: o.total_cost_usd ?? 0 };
 };
 
-export function clusterTopics(
+export async function clusterTopics(
   items: TopicItem[],
   opts: { run?: LabelRun } = {}
-): { topics: TopicCluster[]; costUsd: number } {
+): Promise<{ topics: TopicCluster[]; costUsd: number }> {
   if (items.length === 0) return { topics: [], costUsd: 0 };
   const run = opts.run ?? defaultClusterRun;
-  const { result, costUsd } = run(buildClusterPrompt(items));
+  const { result, costUsd } = await run(buildClusterPrompt(items));
   return { topics: parseClusters(result, items), costUsd };
 }

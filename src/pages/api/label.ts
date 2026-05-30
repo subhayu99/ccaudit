@@ -45,7 +45,7 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   try {
-    const { labels, costUsd } = labelSegments(segments);
+    const { labels, costUsd } = await labelSegments(segments);
     saveLabels(db, { sessionId, spineHash: hash, labels, model: "haiku", costUsd });
     db.close();
     return new Response(JSON.stringify({ labels, costUsd, cached: false }), {
@@ -53,6 +53,9 @@ export const POST: APIRoute = async ({ request }) => {
     });
   } catch (e) {
     db.close();
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }), { status: 500 });
+    const message = e instanceof Error ? e.message : String(e);
+    // Timeout -> 504; known CLI failures (missing CLI, non-zero exit, non-JSON) -> 400.
+    const status = (e as { isTimeout?: boolean })?.isTimeout ? 504 : 400;
+    return new Response(JSON.stringify({ error: message }), { status });
   }
 };

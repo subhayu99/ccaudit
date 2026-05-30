@@ -1,7 +1,9 @@
-import { execFileSync } from "node:child_process";
 import type { Segment } from "../lib/segment.js";
+import { runClaude, parseClaudeJson } from "./run-claude.js";
 
-export type LabelRun = (prompt: string) => { result: string; costUsd: number };
+export type LabelResult = { result: string; costUsd: number };
+/** A runner may be sync (test fakes) or async (real `claude -p`); callers always await. */
+export type LabelRun = (prompt: string) => LabelResult | Promise<LabelResult>;
 
 export function buildLabelPrompt(segments: Segment[]): string {
   const list = segments.map((s, i) => `${i + 1}. ${s.opener.replace(/\s+/g, " ").slice(0, 220)}`).join("\n");
@@ -24,23 +26,22 @@ export function parseLabels(resultText: string, expected: number): string[] {
   return out;
 }
 
-export const defaultLabelRun: LabelRun = (prompt) => {
-  const raw = execFileSync(
-    "claude",
+export const defaultLabelRun: LabelRun = async (prompt) => {
+  const raw = await runClaude(
     ["-p", prompt, "--model", "haiku", "--output-format", "json"],
-    { encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: 180_000 }
+    { timeoutMs: 180_000, maxBuffer: 16 * 1024 * 1024 }
   );
-  const o = JSON.parse(raw) as { result?: string; total_cost_usd?: number; is_error?: boolean };
+  const o = parseClaudeJson(raw);
   if (o.is_error) throw new Error("claude -p returned an error");
   return { result: o.result ?? "[]", costUsd: o.total_cost_usd ?? 0 };
 };
 
-export function labelSegments(
+export async function labelSegments(
   segments: Segment[],
   opts: { run?: LabelRun } = {}
-): { labels: string[]; costUsd: number } {
+): Promise<{ labels: string[]; costUsd: number }> {
   if (segments.length === 0) return { labels: [], costUsd: 0 };
   const run = opts.run ?? defaultLabelRun;
-  const { result, costUsd } = run(buildLabelPrompt(segments));
+  const { result, costUsd } = await run(buildLabelPrompt(segments));
   return { labels: parseLabels(result, segments.length), costUsd };
 }

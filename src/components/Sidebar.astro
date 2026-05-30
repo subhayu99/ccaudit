@@ -24,8 +24,9 @@ const { tree, topics = [], activeRepo, activeWorkdir, activeTopic, mode } = Astr
 
     <div class="flex items-center px-2.5 pt-3.5 pb-1.5">
       <span class="text-[10.5px] tracking-wider uppercase font-semibold" style="color:var(--text-faint);">Topics</span>
-      <button id="cluster-topics" class="ml-auto" style="background:none;border:none;color:var(--amber-bright);cursor:pointer;font-size:10.5px;" title="Cluster new (unclustered) sessions into topics with AI">✨ {topics.length ? "Cluster new" : "Cluster"}</button>
+      <button id="cluster-topics" class="ml-auto" style="background:none;border:none;color:var(--amber-bright);cursor:pointer;font-size:10.5px;" title="Cluster new (unclustered) sessions into topics with AI"><span class="cluster-spinner" aria-hidden="true"></span><span class="cluster-label">✨ {topics.length ? "Cluster new" : "Cluster"}</span></button>
     </div>
+    <div id="cluster-note" class="px-2.5 pb-1 text-[11px]" style="display:none;color:var(--text-faint);">~3 min &amp; ~$0.08 — keep this tab open.</div>
     {topics.length === 0 && (
       <div class="px-2.5 pb-1 text-[11.5px]" style="color:var(--text-faint);">Click ✨ to group sessions by topic.</div>
     )}

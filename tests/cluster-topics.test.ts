@@ -34,15 +34,15 @@ describe("parseClusters", () => {
 });
 
 describe("clusterTopics", () => {
-  it("runs the injected runner and returns topics + cost", () => {
+  it("runs the injected runner and returns topics + cost", async () => {
     const run = () => ({ result: '[{"topic":"Backend","sessions":[1,3]}]', costUsd: 0.08 });
-    const out = clusterTopics(items, { run });
+    const out = await clusterTopics(items, { run });
     expect(out.topics).toEqual([{ name: "Backend", sessionIds: ["s1", "s3"] }]);
     expect(out.costUsd).toBe(0.08);
   });
-  it("returns no topics for no items without calling the runner", () => {
+  it("returns no topics for no items without calling the runner", async () => {
     let called = false;
-    const out = clusterTopics([], { run: () => { called = true; return { result: "[]", costUsd: 0 }; } });
+    const out = await clusterTopics([], { run: () => { called = true; return { result: "[]", costUsd: 0 }; } });
     expect(out.topics).toEqual([]);
     expect(called).toBe(false);
   });

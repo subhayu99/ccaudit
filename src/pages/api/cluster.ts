@@ -27,7 +27,16 @@ export const POST: APIRoute = async ({ request }) => {
 
   try {
     if (force) {
-      const { topics, costUsd } = clusterTopics(allItems);
+      const { topics, costUsd } = await clusterTopics(allItems);
+      // Never wipe existing topics on an empty/degenerate result. replaceTopics
+      // DELETEs everything before inserting, so only commit a validated non-empty set.
+      if (topics.length === 0) {
+        db.close();
+        return new Response(
+          JSON.stringify({ error: "re-cluster produced no topics — existing topics left unchanged" }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
       replaceTopics(db, topics);
       const total = listTopics(db).length;
       db.close();
@@ -46,7 +55,7 @@ export const POST: APIRoute = async ({ request }) => {
       });
     }
     const existingNames = listTopics(db).map((t) => t.name);
-    const { topics, costUsd } = assignNewSessions(fresh, existingNames);
+    const { topics, costUsd } = await assignNewSessions(fresh, existingNames);
     addToTopics(db, topics);
     const total = listTopics(db).length;
     db.close();
@@ -55,6 +64,9 @@ export const POST: APIRoute = async ({ request }) => {
     });
   } catch (e) {
     db.close();
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }), { status: 500 });
+    const message = e instanceof Error ? e.message : String(e);
+    // Timeout -> 504; known CLI failures (missing CLI, non-zero exit, non-JSON) -> 400.
+    const status = (e as { isTimeout?: boolean })?.isTimeout ? 504 : 400;
+    return new Response(JSON.stringify({ error: message }), { status });
   }
 };

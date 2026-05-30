@@ -34,15 +34,20 @@ describe("parseLabels", () => {
 });
 
 describe("labelSegments", () => {
-  it("runs the injected runner and returns labels + cost", () => {
+  it("runs the injected runner and returns labels + cost", async () => {
     const run = (_prompt: string) => ({ result: '["Auth Fix","Deploy"]', costUsd: 0.03 });
-    const out = labelSegments([seg(0, "x"), seg(1, "y")], { run });
+    const out = await labelSegments([seg(0, "x"), seg(1, "y")], { run });
     expect(out.labels).toEqual(["Auth Fix", "Deploy"]);
     expect(out.costUsd).toBe(0.03);
   });
-  it("returns empty labels for no segments without calling the runner", () => {
+  it("awaits an async runner", async () => {
+    const run = async (_prompt: string) => ({ result: '["Async Label"]', costUsd: 0.01 });
+    const out = await labelSegments([seg(0, "x")], { run });
+    expect(out.labels).toEqual(["Async Label"]);
+  });
+  it("returns empty labels for no segments without calling the runner", async () => {
     let called = false;
-    const out = labelSegments([], { run: () => { called = true; return { result: "[]", costUsd: 0 }; } });
+    const out = await labelSegments([], { run: () => { called = true; return { result: "[]", costUsd: 0 }; } });
     expect(out.labels).toEqual([]);
     expect(called).toBe(false);
   });
