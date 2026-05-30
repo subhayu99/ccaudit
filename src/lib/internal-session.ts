@@ -8,6 +8,7 @@ const SIGNATURES: RegExp[] = [
   /You are titling \d+ of a developer's Claude Code session/i, // name-sessions
   /You are labeling segments of a developer's Claude Code session/i, // label-segments
   /\bdeveloper coding-session titles\b/i, // cluster-topics / assign
+  /excerpts below, retrieved from their Claude Code session history/i, // ask
 ];
 
 /** True if `firstUserText` is one of ccaudit's own `claude -p` tool prompts. */
