@@ -38,5 +38,15 @@ Dimensions: architecture/code-quality, performance/scalability, UX/product criti
 ## Progress log
 - ✅ P0 incremental clustering (commit) — `/api/cluster` default incremental, `force` full re-cluster, `addToTopics`/`assignNewSessions`. Sidebar "Cluster new".
 - ✅ P0 topic graph (commit) — `getTopicGraphData`, Topics tab in `/graph?view=topics` (topic→session), verified 13 topics/115 sessions.
-- ⏳ Audit workflow running (wf_57121064-51a) → writes docs/audit/*.md + BACKLOG.md.
-- NEXT (post-audit): work BACKLOG P0→P1→P2; verify each; finish with docs/audit/REPORT.md.
+- ✅ Audit workflow (wf_57121064-51a) → docs/audit/*.md + BACKLOG.md (12 P0 / 8 P1 / 10 P2).
+- ✅ P0 #3,#4,#5 (serve standalone, files allowlist, FTS escape) — commit 04edeb1.
+- ✅ P0 #6 limit clamp — 9744e3b. ✅ P0 #11,#12 resume-quote/paths — 55a3a55.
+- ✅ P0 #7,#8 async runClaude + cluster never-wipe + spinner — 7657adf.
+- ✅ P0 #9,#10 DB singleton + UDF/pragmas once — efab87b. (ALL 12 P0 done.)
+- ✅ P1 #1,#6 memoize tree + exclusion short-circuit — 7513fe7.
+- ✅ P1 #5,#8 loading states + ⌘K polish + touch hide btns — 9df1878.
+- ✅ P1 #2,#3,#4,#7(palette) onboarding + error panels + search N+1/deep-link + palette cap — 2106791.
+- ✅ P2 #5,#6 packaging metadata/LICENSE/cross-platform open/doctor/prepublish — 57e5e8b.
+- ✅ docs/audit/REPORT.md written.
+- ⏳ P2 #2 stats/topics CLI + safe code-health (final background agent).
+- REMAINING (next session): P1 #7 graph hubs-only lazy-load; P2 #1 token/cost capture; #3 topic mgmt; #4 watcher/SSE; #7 RAG/export; #8 reader load-earlier/mobile; #10 robustness.
