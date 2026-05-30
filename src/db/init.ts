@@ -112,6 +112,20 @@ CREATE TABLE IF NOT EXISTS segment_labels (
   cost_usd    REAL,
   created_at  INTEGER NOT NULL
 );
+
+-- Layer 2c: cross-session topic clusters (the WHAT axis). Regenerated wholesale
+-- on demand; AI/heuristic, pinned until re-clustered.
+CREATE TABLE IF NOT EXISTS topics (
+  id         INTEGER PRIMARY KEY,
+  name       TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS topic_members (
+  topic_id   INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+  session_id TEXT NOT NULL,
+  PRIMARY KEY (topic_id, session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_topic_members_session ON topic_members(session_id);
 `;
 
 export function openDb(path: string): Database.Database {
