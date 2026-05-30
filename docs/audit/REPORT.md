@@ -73,6 +73,20 @@ Verification gate after every wave: `npx tsc --noEmit`, `npx vitest run`, `npx a
 `npm run build`. The server-booting smoke test was run 3× to confirm the DB-singleton didn't
 introduce flakiness.
 
+## Follow-up session additions (post-audit)
+
+- **Session titles (fixed a real bug + new feature).** The indexer read `ai-title` from the wrong
+  field (`raw.title` vs `aiTitle`), so **0/343 sessions were titled**. Fixed → 228 titled for free
+  from Claude Code's own titles; new **`ccaudit name`** generates the rest via `claude -p` (haiku,
+  injection-resistant prompt). Also excludes ccaudit's own `claude -p` meta-sessions from the index
+  (they were polluting history), with `busy_timeout` for bulk writes. All sessions now titled.
+- **Reader UX.** Header is sticky, thread nav is fixed, and the conversation **opens at the bottom**
+  (scroll up for history, like a chat). Thread rail/minimap hide under 900px.
+- **Token/cost capture (P2 #1 — done).** Indexer captures per-model `message.usage` into
+  `sessions.token_usage`; `src/lib/pricing.ts` estimates spend. Surfaced as Dashboard stat cards +
+  per-model bars, a per-session `~$cost` in the reader header, and `ccaudit stats`. Verified on the
+  real index (~11.5B tokens, ~$27.8k estimated).
+
 ## Remaining / known issues (recommended next session)
 
 1. **Graph payload (P1 #7, the heavy half).** The ⌘K palette is now capped, but `/graph` still ships
