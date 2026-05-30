@@ -55,6 +55,9 @@ export type RawMessage = {
     role?: string;
     content?: unknown; // string | Array<{type, text?, ...}>
   };
-  // ai-title messages
+  // ai-title messages carry the title in `aiTitle`; user-set titles in `customTitle`.
+  // (`title` kept for backward-compat with any older log shape.)
   title?: string;
+  aiTitle?: string;
+  customTitle?: string;
 };

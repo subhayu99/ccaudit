@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { walkProjects } from "./walk.js";
 import { parseJsonlFile } from "./parse.js";
 import { newAggregator, finalizeAggregator } from "./aggregate.js";
-import { getSessionByFilePath, upsertSession } from "../db/sessions.js";
+import { getSessionByFilePath, upsertSession, deleteSession } from "../db/sessions.js";
 import { deleteSessionMessages, insertMessages } from "../db/messages.js";
 import { resolveWorkdirs } from "./resolve-workdirs.js";
 import { isExcludedPath, listExclusions } from "../db/exclusions.js";
@@ -92,6 +92,15 @@ export async function indexAll(
     }
 
     const state = finalizeAggregator(agg);
+
+    // Exclude ccaudit's own `claude -p` tool sessions (they pollute the history with our
+    // prompt text). Evict any previously-indexed copy and skip insertion.
+    if (state.isInternal) {
+      if (existing) deleteSession(db, e.sessionId);
+      stats.sessionsSkipped += 1;
+      continue;
+    }
+
     const session: Session = {
       id: e.sessionId,
       projectDir: e.projectDir,
@@ -106,7 +115,7 @@ export async function indexAll(
       userMsgCount: state.userMsgCount,
       compactCount: state.compactCount,
       firstPrompt: state.firstPrompt,
-      aiTitle: state.aiTitle,
+      aiTitle: state.customTitle ?? state.aiTitle,
       cwd: state.cwd,
       indexedAt: Date.now(),
     };

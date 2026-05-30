@@ -147,6 +147,9 @@ export function openDb(path: string): Database.Database {
   const db = new Database(path);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
+  // Wait (don't throw SQLITE_BUSY) when another connection holds a write lock — e.g. the
+  // `ccaudit name` bulk writer running while the web server is also indexing.
+  db.pragma("busy_timeout = 5000");
   // Read-path perf pragmas (safe on a writable WAL connection).
   db.pragma("synchronous = NORMAL");
   db.pragma("cache_size = -16000");
