@@ -1,8 +1,28 @@
 {
   "name": "ccaudit",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Browse, search, and audit your Claude Code session history",
   "type": "module",
+  "author": "subhayu99",
+  "license": "MIT",
+  "homepage": "https://github.com/subhayu99/ccaudit#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/subhayu99/ccaudit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/subhayu99/ccaudit/issues"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "cli",
+    "session-history",
+    "search",
+    "audit",
+    "sqlite",
+    "developer-tools"
+  ],
   "bin": {
     "ccaudit": "./dist/index.js"
   },
@@ -23,7 +43,7 @@
     "test:watch": "vitest",
     "typecheck": "astro check && tsc --noEmit",
     "prepare": "npm run build",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build && npm test"
   },
   "engines": {
     "node": ">=20"
@@ -58,6 +78,5 @@
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
-  },
-  "license": "MIT"
+  }
 }

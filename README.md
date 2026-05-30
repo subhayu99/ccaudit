@@ -65,4 +65,4 @@ Local-only. The index lives at `~/.ccaudit/`. ccaudit reads `~/.claude/projects/
 
 ---
 
-Design notes live in `docs/superpowers/specs/`.
+Design notes live in [`docs/superpowers/specs/`](https://github.com/subhayu99/ccaudit/tree/main/docs/superpowers/specs) in the repository (not shipped in the npm package).

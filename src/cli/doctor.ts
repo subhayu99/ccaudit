@@ -1,9 +1,12 @@
 import { existsSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import kleur from "kleur";
 import { openDb } from "../db/init.js";
 import { CLAUDE_PROJECTS_DIR, INDEX_DB_PATH } from "../paths.js";
 
-type Check = { name: string; ok: boolean; detail: string };
+// `optional: true` => a failure is a warning, not a hard error (e.g. the claude CLI,
+// which only gates AI thread-naming / topic clustering).
+type Check = { name: string; ok: boolean; detail: string; optional?: boolean };
 
 export async function doctorCommand(): Promise<void> {
   const checks: Check[] = [];
@@ -46,11 +49,27 @@ export async function doctorCommand(): Promise<void> {
     });
   }
 
+  // claude CLI — optional; gates AI thread-naming + topic clustering only.
+  try {
+    const out = execFileSync("claude", ["--version"], { encoding: "utf8", timeout: 5000 }).trim();
+    checks.push({ name: "claude CLI", ok: true, detail: `found (${out})`, optional: true });
+  } catch (e) {
+    const enoent = (e as { code?: string }).code === "ENOENT";
+    checks.push({
+      name: "claude CLI",
+      ok: false,
+      optional: true,
+      detail: enoent
+        ? "not on PATH — AI naming/clustering disabled (install Claude Code to enable)"
+        : `probe failed: ${e instanceof Error ? e.message : String(e)}`,
+    });
+  }
+
   let anyFail = false;
   for (const c of checks) {
-    const status = c.ok ? kleur.green("OK") : kleur.red("ERR");
+    const status = c.ok ? kleur.green("OK") : c.optional ? kleur.yellow("WARN") : kleur.red("ERR");
     console.log(`  [${status}] ${c.name} — ${c.detail}`);
-    if (!c.ok) anyFail = true;
+    if (!c.ok && !c.optional) anyFail = true;
   }
   if (anyFail) process.exit(1);
 }

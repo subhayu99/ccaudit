@@ -57,7 +57,14 @@ export async function serveCommand(opts: { port?: string; open?: boolean }): Pro
     while (Date.now() < deadline) {
       try {
         const res = await fetch(url);
-        if (res.ok) { exec(`open "${url}"`); break; }
+        if (res.ok) {
+          const cmd =
+            process.platform === "darwin" ? `open "${url}"`
+            : process.platform === "win32" ? `start "" "${url}"`
+            : `xdg-open "${url}"`;
+          exec(cmd);
+          break;
+        }
       } catch { /* not ready yet */ }
       await wait(500);
     }
