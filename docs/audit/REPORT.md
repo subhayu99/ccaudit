@@ -52,8 +52,8 @@ moment a DB singleton landed. #11 was a real shell-injection vector in the resum
 |---|------|--------|--------|
 | 5 | Packaging metadata + LICENSE + cross-platform `open` | `57e5e8b` | **Done** — MIT LICENSE, repo/homepage/bugs/keywords, `0.0.1→0.1.0`, darwin/win32/xdg `open` |
 | 6 | `doctor` probes `claude` CLI; prepublish test gate | `57e5e8b` | **Done** — optional WARN for missing `claude`; `prepublishOnly` runs build + tests |
-| 2 | `ccaudit stats` / `ccaudit topics` CLI | (final agent) | In-flight at time of writing — see git log for the commit |
-| 9 | Code-health cleanups (partial) | (final agent) | Safe subset (search no-op, dead analytics stub) — in-flight |
+| 2 | `ccaudit stats` / `ccaudit topics` CLI | `fedcba8` | **Done** — smoke-tested on the real index (139 sessions, 13 topics) |
+| 9 | Code-health cleanups (partial) | `fedcba8` | **Done** (safe subset) — removed no-op `stripMarks` branch + deleted dead `analytics.astro` |
 
 ---
 
