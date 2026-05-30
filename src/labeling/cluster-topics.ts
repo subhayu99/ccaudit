@@ -36,7 +36,7 @@ export const defaultClusterRun: LabelRun = (prompt) => {
   const raw = execFileSync(
     "claude",
     ["-p", prompt, "--model", "haiku", "--output-format", "json"],
-    { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, timeout: 240_000 }
+    { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, timeout: 600_000 }
   );
   const o = JSON.parse(raw) as { result?: string; total_cost_usd?: number; is_error?: boolean };
   if (o.is_error) throw new Error("claude -p returned an error");
