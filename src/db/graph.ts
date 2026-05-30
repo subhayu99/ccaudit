@@ -45,6 +45,39 @@ export type GraphData = {
   links: GraphLink[];
 };
 
+/**
+ * Bound the graph payload: keep only the `perHub` most-recent session leaves under each hub
+ * (hubs retain their full sessionCount; click a hub to open its complete list). This keeps the
+ * force simulation responsive on large graphs without dropping any hub.
+ * Returns { data, droppedSessions } so callers can surface what was collapsed.
+ */
+export function capSessionsPerHub(data: GraphData, perHub: number): { data: GraphData; droppedSessions: number } {
+  const isSession = new Set(data.nodes.filter((n) => n.type === "session").map((n) => n.id));
+  // Each session links to exactly one hub — the non-session endpoint.
+  const hubOf = new Map<string, string>();
+  for (const l of data.links) {
+    if (isSession.has(l.source) && !isSession.has(l.target)) hubOf.set(l.source, l.target);
+    else if (isSession.has(l.target) && !isSession.has(l.source)) hubOf.set(l.target, l.source);
+  }
+  const lastActivity = new Map(data.nodes.map((n) => [n.id, n.lastActivity ?? 0]));
+  const byHub = new Map<string, string[]>();
+  for (const id of isSession) {
+    const hub = hubOf.get(id) ?? "__nohub__";
+    if (!byHub.has(hub)) byHub.set(hub, []);
+    byHub.get(hub)!.push(id);
+  }
+  const drop = new Set<string>();
+  for (const ids of byHub.values()) {
+    if (ids.length <= perHub) continue;
+    ids.sort((a, b) => (lastActivity.get(b) ?? 0) - (lastActivity.get(a) ?? 0));
+    for (const id of ids.slice(perHub)) drop.add(id);
+  }
+  if (drop.size === 0) return { data, droppedSessions: 0 };
+  const nodes = data.nodes.filter((n) => !drop.has(n.id));
+  const links = data.links.filter((l) => !drop.has(l.source) && !drop.has(l.target));
+  return { data: { nodes, links }, droppedSessions: drop.size };
+}
+
 type ProjectRow = {
   projectDir: string;
   projectLabel: string;

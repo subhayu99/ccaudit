@@ -2,7 +2,7 @@
 import AppShell from "../layouts/AppShell.astro";
 import Sidebar from "../components/Sidebar.astro";
 import { getDb } from "../db/init";
-import { getGraphData } from "../db/graph";
+import { getGraphData, capSessionsPerHub, type GraphData } from "../db/graph";
 import { getRepoGraphData } from "../db/repo-graph";
 import { getTopicGraphData } from "../db/topic-graph";
 import { getLibraryTree, type LibraryTree } from "../db/library";
@@ -10,14 +10,19 @@ import { getLibraryTree, type LibraryTree } from "../db/library";
 const vparam = Astro.url.searchParams.get("view");
 const view = vparam === "repos" ? "repos" : vparam === "topics" ? "topics" : "folders";
 
-type GraphLike = { nodes: Array<{ type: string }>; links: unknown[] };
+const SESSIONS_PER_HUB = 12;
 let dbError = "";
-let graph: GraphLike = { nodes: [], links: [] };
+let graph: GraphData = { nodes: [], links: [] };
 let tree: LibraryTree = { repos: [], totalCount: 0 };
+let droppedSessions = 0;
 
 const db = getDb();
 try {
-  graph = view === "topics" ? getTopicGraphData(db) : view === "repos" ? getRepoGraphData(db) : getGraphData(db);
+  const raw = view === "topics" ? getTopicGraphData(db) : view === "repos" ? getRepoGraphData(db) : getGraphData(db);
+  // Bound the payload so the force sim stays smooth; hubs keep their full counts.
+  const capped = capSessionsPerHub(raw, SESSIONS_PER_HUB);
+  graph = capped.data;
+  droppedSessions = capped.droppedSessions;
   tree = getLibraryTree(db);
 } catch (e) {
   dbError = e instanceof Error ? e.message : String(e);
@@ -37,6 +42,9 @@ const graphJson = JSON.stringify(graph);
     <div class="rounded-lg p-3 mb-3 text-sm" style="background:rgba(180,60,60,.12); border:1px solid rgba(180,60,60,.4); color:#e0a0a0;">
       <strong>Couldn't load graph data:</strong> {dbError} — run <span class="font-mono-w">ccaudit reindex</span>.
     </div>
+  )}
+  {droppedSessions > 0 && (
+    <div class="text-[11.5px] mb-2" style="color:var(--text-faint);">Showing up to {SESSIONS_PER_HUB} recent sessions per group — {droppedSessions.toLocaleString()} collapsed. Click a group to open its full list.</div>
   )}
   <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
     <h1 class="font-serif text-2xl font-semibold" style="color:var(--text);">Graph</h1>
@@ -287,7 +295,9 @@ const graphJson = JSON.stringify(graph);
         if (d.type === "session") window.location.href = "/s/" + d.sessionId;
         else if (d.type === "project") window.location.href = "/?project=" + encodeURIComponent(d.projectDir);
         else if (d.type === "topic") window.location.href = "/?topic=" + d.id.slice(6);
-        // folder/repo/workdir click: no-op (visual grouping)
+        else if (d.type === "repo") window.location.href = "/?repo=" + encodeURIComponent(d.id.slice(5));
+        else if (d.type === "workdir") window.location.href = "/?workdir=" + encodeURIComponent(d.workdirPath || d.id.slice(9));
+        // folder click: no-op (visual grouping)
       });
 
     // Force simulation — only structural links drive layout.
