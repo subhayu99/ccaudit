@@ -8,12 +8,13 @@ import {
 } from "../db/messages.js";
 import { getIndexStats } from "../db/stats.js";
 import { classifyMessage } from "../lib/message-kind.js";
+import { clampLimit } from "../cli/limit.js";
 
 export function toolListSessions(
   db: Database.Database,
   args: { limit?: number; project?: string }
 ) {
-  const sessions = listSessions(db, { limit: args.limit ?? 30, projectDir: args.project });
+  const sessions = listSessions(db, { limit: clampLimit(args.limit, 30), projectDir: args.project });
   return sessions.map((s) => ({
     id: s.id,
     project: s.projectLabel,
@@ -30,7 +31,7 @@ export function toolSearchSessions(
   db: Database.Database,
   args: { query: string; mode?: "fts" | "exact" | "regex"; limit?: number }
 ) {
-  const limit = args.limit ?? 20;
+  const limit = clampLimit(args.limit, 20);
   const mode = args.mode ?? "fts";
   const hits =
     mode === "exact"
@@ -71,7 +72,7 @@ export function toolGetSession(
   if (!args.includeMessages) return base;
   const all = getSessionMessages(db, args.sessionId);
   // Only return meaningful conversation messages (skip noise), with text.
-  const limit = args.limit ?? 200;
+  const limit = clampLimit(args.limit, 200);
   const msgs = all
     .filter((m) => classifyMessage(m) !== "noise")
     .slice(0, limit)

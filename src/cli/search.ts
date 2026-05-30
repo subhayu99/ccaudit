@@ -3,6 +3,7 @@ import { openDb } from "../db/init.js";
 import { searchMessages } from "../db/messages.js";
 import { getSession } from "../db/sessions.js";
 import { INDEX_DB_PATH } from "../paths.js";
+import { clampLimit } from "./limit.js";
 
 function stripMarks(snippet: string): string {
   return snippet.replace(/<\/?mark>/g, "");
@@ -15,7 +16,7 @@ function highlightForTerminal(snippet: string): string {
 export async function searchCommand(query: string, opts: { limit?: string }): Promise<void> {
   const db = openDb(INDEX_DB_PATH);
   try {
-    const hits = searchMessages(db, query, { limit: Number(opts.limit ?? 20) });
+    const hits = searchMessages(db, query, { limit: clampLimit(opts.limit, 20) });
     if (hits.length === 0) {
       console.log("(no matches)");
       return;

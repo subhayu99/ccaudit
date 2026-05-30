@@ -2,13 +2,14 @@ import kleur from "kleur";
 import { openDb } from "../db/init.js";
 import { listSessions } from "../db/sessions.js";
 import { INDEX_DB_PATH } from "../paths.js";
+import { clampLimit } from "./limit.js";
 
 export async function listCommand(opts: { project?: string; limit?: string }): Promise<void> {
   const db = openDb(INDEX_DB_PATH);
   try {
     const rows = listSessions(db, {
       projectDir: opts.project,
-      limit: Number(opts.limit ?? 30),
+      limit: clampLimit(opts.limit, 30),
     });
     if (rows.length === 0) {
       console.log("(no sessions indexed — run `ccaudit reindex`)");
