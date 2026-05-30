@@ -1,20 +1,18 @@
 ---
 import AppShell from "../layouts/AppShell.astro";
 import Sidebar from "../components/Sidebar.astro";
-import { openDb } from "../db/init";
+import { getDb } from "../db/init";
 import { getGraphData } from "../db/graph";
 import { getRepoGraphData } from "../db/repo-graph";
 import { getTopicGraphData } from "../db/topic-graph";
 import { getLibraryTree } from "../db/library";
-import { INDEX_DB_PATH } from "../paths";
 
 const vparam = Astro.url.searchParams.get("view");
 const view = vparam === "repos" ? "repos" : vparam === "topics" ? "topics" : "folders";
 
-const db = openDb(INDEX_DB_PATH);
+const db = getDb();
 const graph = view === "topics" ? getTopicGraphData(db) : view === "repos" ? getRepoGraphData(db) : getGraphData(db);
 const tree = getLibraryTree(db);
-db.close();
 
 const count = (t: string) => graph.nodes.filter((n) => n.type === t).length;
 

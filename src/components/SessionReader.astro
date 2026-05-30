@@ -1,7 +1,7 @@
 ---
 // src/components/SessionReader.astro — warm-obsidian in-shell transcript reader.
 import { existsSync } from "node:fs";
-import { openDb } from "../db/init";
+import { getDb } from "../db/init";
 import { getSession } from "../db/sessions";
 import { getSessionMessages, getSessionMessagesTail } from "../db/messages";
 import { classifyMessage } from "../lib/message-kind";
@@ -11,12 +11,11 @@ import { cleanPromptText } from "../lib/clean-prompt";
 import { segmentSession } from "../lib/segment";
 import { getLabels, spineHash } from "../db/labels";
 import { posixQuote } from "../lib/shell";
-import { INDEX_DB_PATH } from "../paths";
 
 interface Props { sessionId: string; }
 const { sessionId } = Astro.props;
 
-const db = openDb(INDEX_DB_PATH);
+const db = getDb();
 const session = getSession(db, sessionId);
 // Only load what we'll render: the tail for huge sessions (raw includes noise,
 // so load generously — visible turns get capped below).
@@ -32,7 +31,6 @@ const messages = !session
 const segments = segmentSession(messages);
 const cachedLabels = getLabels(db, sessionId);
 const labelsFresh = !!cachedLabels && cachedLabels.spineHash === spineHash(segments);
-db.close();
 const segLabel = (i: number): string | null => (labelsFresh ? cachedLabels!.labels[i] ?? null : null);
 
 const classified = messages.map((m) => ({ m, kind: classifyMessage(m) }));

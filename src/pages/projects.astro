@@ -1,18 +1,16 @@
 ---
 import AppShell from "../layouts/AppShell.astro";
 import Sidebar from "../components/Sidebar.astro";
-import { openDb } from "../db/init";
+import { getDb } from "../db/init";
 import { listProjects } from "../db/sessions";
 import { listExclusions } from "../db/exclusions";
 import { getLibraryTree } from "../db/library";
 import { formatTimestamp } from "../lib/render";
-import { INDEX_DB_PATH } from "../paths";
 
-const db = openDb(INDEX_DB_PATH);
+const db = getDb();
 const projects = listProjects(db);
 const hidden = listExclusions(db);
 const tree = getLibraryTree(db);
-db.close();
 ---
 <AppShell title="ccaudit — directories">
   <Sidebar slot="sidebar" tree={tree} />

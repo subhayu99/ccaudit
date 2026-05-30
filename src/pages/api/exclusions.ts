@@ -1,7 +1,6 @@
 import type { APIRoute } from "astro";
-import { openDb } from "../../db/init.js";
+import { getDb } from "../../db/init.js";
 import { addExclusion, removeExclusion } from "../../db/exclusions.js";
-import { INDEX_DB_PATH } from "../../paths.js";
 
 /**
  * Add or remove a hidden directory prefix. Same-origin JSON POST (the client
@@ -25,12 +24,11 @@ export const POST: APIRoute = async ({ request }) => {
     return new Response(JSON.stringify({ error: "bad request" }), { status: 400 });
   }
 
-  const db = openDb(INDEX_DB_PATH);
+  const db = getDb();
   for (const prefix of prefixes) {
     if (action === "add") addExclusion(db, prefix);
     else removeExclusion(db, prefix);
   }
-  db.close();
 
   return new Response(JSON.stringify({ ok: true }), {
     status: 200,

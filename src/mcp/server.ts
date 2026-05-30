@@ -1,8 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { openDb } from "../db/init.js";
-import { INDEX_DB_PATH } from "../paths.js";
+import { getDb } from "../db/init.js";
 import {
   toolListSessions,
   toolSearchSessions,
@@ -15,7 +14,7 @@ function json(data: unknown) {
 }
 
 export async function startMcpServer(): Promise<void> {
-  const db = openDb(INDEX_DB_PATH);
+  const db = getDb();
   const server = new McpServer({ name: "ccaudit", version: "0.0.1" });
 
   server.registerTool(

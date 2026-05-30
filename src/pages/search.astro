@@ -1,11 +1,10 @@
 ---
 import AppShell from "../layouts/AppShell.astro";
 import Sidebar from "../components/Sidebar.astro";
-import { openDb } from "../db/init";
+import { getDb } from "../db/init";
 import { searchMessages, searchMessagesExact, searchMessagesRegex } from "../db/messages";
 import { getSession } from "../db/sessions";
 import { getLibraryTree } from "../db/library";
-import { INDEX_DB_PATH } from "../paths";
 import { shortSessionId, formatTimestamp } from "../lib/render";
 import type { Session } from "../types";
 
@@ -16,7 +15,7 @@ type EnrichedHit = { sessionId: string; lineNo: number; snippet: string; rank: n
 let hits: EnrichedHit[] = [];
 let searchError = "";
 
-const db = openDb(INDEX_DB_PATH);
+const db = getDb();
 const tree = getLibraryTree(db);
 if (query) {
   try {
@@ -29,7 +28,6 @@ if (query) {
     searchError = e instanceof Error ? e.message : String(e);
   }
 }
-db.close();
 
 const modes = [
   { key: "fts", label: "Smart", desc: "Full-text with stemming & ranking" },

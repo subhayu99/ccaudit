@@ -1,15 +1,13 @@
 ---
 // src/components/Dashboard.astro — warm empty-state shown when no session is selected.
-import { openDb } from "../db/init";
+import { getDb } from "../db/init";
 import { getIndexStats } from "../db/stats";
 import { getActivityByDay, getToolUsage } from "../db/analytics";
-import { INDEX_DB_PATH } from "../paths";
 
-const db = openDb(INDEX_DB_PATH);
+const db = getDb();
 const stats = getIndexStats(db);
 const activity = getActivityByDay(db);
 const tools = getToolUsage(db).slice(0, 12);
-db.close();
 
 // Build a GitHub-style heatmap grid for the last 18 weeks (msg counts per day).
 const msgsByDay = new Map(activity.map((a) => [a.day, a.messages]));

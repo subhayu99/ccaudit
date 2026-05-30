@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { INDEX_DB_PATH } from "../paths.js";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -128,15 +129,52 @@ CREATE TABLE IF NOT EXISTS topic_members (
 CREATE INDEX IF NOT EXISTS idx_topic_members_session ON topic_members(session_id);
 `;
 
+/** Register user-defined SQL functions once per connection (must be present on every handle). */
+function registerFunctions(db: Database.Database): void {
+  db.function("ccaudit_regexp", { deterministic: true }, (pat: unknown, text: unknown) => {
+    if (typeof text !== "string") return 0;
+    try {
+      return new RegExp(pat as string, "i").test(text) ? 1 : 0;
+    } catch {
+      return 0;
+    }
+  });
+}
+
+/** Open a fresh connection to `path`. Pure factory — used by tests/CLI that need isolated handles. */
 export function openDb(path: string): Database.Database {
   mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
+  // Read-path perf pragmas (safe on a writable WAL connection).
+  db.pragma("synchronous = NORMAL");
+  db.pragma("cache_size = -16000");
+  db.pragma("temp_store = MEMORY");
+  db.pragma("mmap_size = 268435456");
   db.exec(SCHEMA);
   const cols = db.pragma("table_info(sessions)") as Array<{ name: string }>;
   if (!cols.some((c) => c.name === "cwd")) {
     db.exec("ALTER TABLE sessions ADD COLUMN cwd TEXT");
   }
+  registerFunctions(db);
   return db;
+}
+
+let _db: Database.Database | null = null;
+
+/**
+ * Process-wide shared handle for the default index DB (SSR pages, API routes, MCP server).
+ * Never call `.close()` on this from a request handler — it would close the shared connection.
+ * Tests and CLI commands use `openDb(path)` directly for isolated handles.
+ */
+export function getDb(): Database.Database {
+  if (!_db) _db = openDb(INDEX_DB_PATH);
+  return _db;
+}
+
+/** Close and reset the shared handle (graceful shutdown). */
+export function closeDb(): void {
+  _db?.close();
+  _db = null;
 }

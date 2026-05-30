@@ -5,10 +5,9 @@ import SessionListPane from "../components/SessionListPane.astro";
 import SessionReader from "../components/SessionReader.astro";
 import CommandPalette from "../components/CommandPalette.astro";
 import Dashboard from "../components/Dashboard.astro";
-import { openDb } from "../db/init";
+import { getDb } from "../db/init";
 import { getLibraryTree, listSessionsGrouped, type Selection } from "../db/library";
 import { listTopics, getTopic } from "../db/topics";
-import { INDEX_DB_PATH } from "../paths";
 
 const url = Astro.url;
 const repo = url.searchParams.get("repo") ?? undefined;
@@ -17,7 +16,7 @@ const topicId = url.searchParams.get("topic") ? Number(url.searchParams.get("top
 const mode = (url.searchParams.get("mode") as "recent" | "all" | null) ?? undefined;
 const session = url.searchParams.get("session") ?? undefined;
 
-const db = openDb(INDEX_DB_PATH);
+const db = getDb();
 const tree = getLibraryTree(db);
 const topics = listTopics(db);
 const topic = topicId !== undefined ? getTopic(db, topicId) : null;
@@ -29,7 +28,6 @@ const sel: Selection = repo
       ? { topic: topicId!, topicName: topic.name, topicIds: topic.sessionIds }
       : { mode: mode ?? "recent" };
 const list = listSessionsGrouped(db, sel, Date.now(), tree); // reuse the tree (one build per request)
-db.close();
 
 // Preserve the current selection when opening a session, so the sidebar + list
 // stay put instead of resetting to the default view.

@@ -187,15 +187,7 @@ export function searchMessagesRegex(
   } catch {
     return [];
   }
-  // Register the regexp function for this connection
-  db.function("ccaudit_regexp", { deterministic: true }, (pat: unknown, text: unknown) => {
-    if (typeof text !== "string") return 0;
-    try {
-      return new RegExp(pat as string, "i").test(text) ? 1 : 0;
-    } catch {
-      return 0;
-    }
-  });
+  // ccaudit_regexp UDF is registered once per connection in openDb (src/db/init.ts).
   const excl = sessionKeepCondition(db);
   const rows = db
     .prepare(
