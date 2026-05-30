@@ -65,7 +65,7 @@ export function upsertSession(db: Database.Database, s: Session): void {
        user_msg_count = excluded.user_msg_count,
        compact_count = excluded.compact_count,
        first_prompt  = excluded.first_prompt,
-       ai_title      = excluded.ai_title,
+       ai_title      = COALESCE(excluded.ai_title, sessions.ai_title),
        cwd           = excluded.cwd,
        indexed_at    = excluded.indexed_at`
   ).run(s);
@@ -90,6 +90,33 @@ export function getSessionsByIds(db: Database.Database, ids: string[]): Map<stri
     out.set(s.id, s);
   }
   return out;
+}
+
+/** Remove a session and everything keyed to it (messages cascade + FTS trigger; topic/label
+ *  rows have no FK so are deleted explicitly). Used to evict ccaudit's own tool meta-sessions. */
+export function deleteSession(db: Database.Database, id: string): void {
+  db.transaction(() => {
+    db.prepare("DELETE FROM messages WHERE session_id = ?").run(id); // fires the messages_fts trigger
+    db.prepare("DELETE FROM topic_members WHERE session_id = ?").run(id);
+    db.prepare("DELETE FROM segment_labels WHERE session_id = ?").run(id);
+    db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
+  })();
+}
+
+/** Set a generated session title. Survives reindex via the COALESCE upsert. */
+export function updateAiTitle(db: Database.Database, id: string, title: string): void {
+  db.prepare("UPDATE sessions SET ai_title = ? WHERE id = ?").run(title, id);
+}
+
+/** Sessions lacking a usable title (or all, when `force`), most-recent first. */
+export function listSessionsNeedingTitle(
+  db: Database.Database,
+  force = false
+): Array<{ id: string; firstPrompt: string | null }> {
+  const where = force ? "" : "WHERE ai_title IS NULL OR ai_title = ''";
+  return db
+    .prepare(`SELECT id, first_prompt AS firstPrompt FROM sessions ${where} ORDER BY last_activity DESC`)
+    .all() as Array<{ id: string; firstPrompt: string | null }>;
 }
 
 export type ListSessionsOptions = {

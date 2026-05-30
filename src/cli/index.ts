@@ -7,12 +7,13 @@ import { serveCommand } from "./serve.js";
 import { mcpCommand } from "./mcp.js";
 import { statsCommand } from "./stats.js";
 import { topicsCommand } from "./topics.js";
+import { nameCommand } from "./name.js";
 
 const program = new Command();
 program
   .name("ccaudit")
   .description("Browse, search, and audit your Claude Code session history")
-  .version("0.0.1");
+  .version("0.1.0");
 
 program
   .command("serve", { isDefault: true })
@@ -49,6 +50,14 @@ program
   .command("topics")
   .description("List clustered topics with their session counts")
   .action(topicsCommand);
+
+program
+  .command("name")
+  .description("Generate titles for sessions that lack one, using `claude -p` (haiku)")
+  .option("--force", "re-title every session, not just untitled ones")
+  .option("--limit <n>", "only title the N most-recent untitled sessions")
+  .option("--batch <n>", "sessions per claude call", "20")
+  .action(nameCommand);
 
 program
   .command("doctor")

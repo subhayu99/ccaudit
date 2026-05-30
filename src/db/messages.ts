@@ -88,6 +88,18 @@ export function getSessionMessagesTail(
   return rows.map(rowToMessage);
 }
 
+/** The first `limit` messages (chronological) — for building opening context (e.g. titling). */
+export function getSessionMessagesHead(
+  db: Database.Database,
+  sessionId: string,
+  limit: number
+): MessageRow[] {
+  const rows = db
+    .prepare("SELECT * FROM messages WHERE session_id = ? ORDER BY line_no ASC LIMIT ?")
+    .all(sessionId, limit) as MessageRowSql[];
+  return rows.map(rowToMessage);
+}
+
 /** Make arbitrary user input safe for an FTS5 MATCH: quote each whitespace term
  *  (doubling internal quotes) so operators/punctuation are treated literally. */
 export function escapeFtsQuery(query: string): string {
