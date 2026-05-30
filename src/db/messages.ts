@@ -88,12 +88,24 @@ export function getSessionMessagesTail(
   return rows.map(rowToMessage);
 }
 
+/** Make arbitrary user input safe for an FTS5 MATCH: quote each whitespace term
+ *  (doubling internal quotes) so operators/punctuation are treated literally. */
+export function escapeFtsQuery(query: string): string {
+  return query
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((t) => `"${t.replace(/"/g, '""')}"`)
+    .join(" ");
+}
+
 export function searchMessages(
   db: Database.Database,
   query: string,
   opts: { limit?: number } = {}
 ): SearchHit[] {
   const limit = opts.limit ?? 50;
+  const ftsQuery = escapeFtsQuery(query);
+  if (!ftsQuery) return [];
   const excl = sessionKeepCondition(db);
   // FTS5 snippet(): table, column, before, after, ellipsis, max-tokens
   const rows = db

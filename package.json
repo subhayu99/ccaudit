@@ -6,8 +6,15 @@
   "bin": {
     "ccaudit": "./dist/index.js"
   },
+  "files": [
+    "dist/",
+    "dist-web/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && astro build",
+    "build:cli": "tsup",
     "build:web": "astro build",
     "dev": "tsx src/cli/index.ts",
     "astro:dev": "astro dev --port 4321",
@@ -15,7 +22,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "astro check && tsc --noEmit",
-    "prepare": "tsup"
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run build"
   },
   "engines": {
     "node": ">=20"
