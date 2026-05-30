@@ -62,21 +62,34 @@ const tree = getLibraryTree(db);
     .prow:hover { background:var(--panel-2); }
     .pbtn { padding:4px 10px; font-size:12px; font-weight:500; border-radius:7px; background:var(--raise); color:var(--text-dim); border:1px solid var(--border); cursor:pointer; }
     .pbtn:hover { background:var(--border); color:var(--text); }
+    .pbtn[disabled] { cursor:default; opacity:.6; }
+    .pbtn-busy { position:relative; color:transparent !important; }
+    .pbtn-busy::after { content:""; position:absolute; inset:0; margin:auto; width:11px; height:11px; border-radius:50%; border:1.5px solid var(--text-faint); border-top-color:var(--amber-bright); animation:pbtn-spin .6s linear infinite; }
+    @keyframes pbtn-spin { to { transform:rotate(360deg); } }
   </style>
 
   <script>
+    // Shared thin top progress bar (element lives in <Sidebar>); show it the instant
+    // a hide/unhide action fires, before the reload.
+    const progressEl = document.getElementById("topbar-progress");
+    let excludeInFlight = false;
     document.querySelectorAll("[data-exclude-action]").forEach((btn) => {
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
+        if (excludeInFlight) return; // guard against double-clicks across all controls
         const el = e.currentTarget as HTMLButtonElement;
+        excludeInFlight = true;
         el.disabled = true;
+        el.classList.add("pbtn-busy");
+        progressEl?.classList.add("active");
         try {
           const res = await fetch("/api/exclusions", {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: el.dataset.excludeAction, prefix: el.dataset.excludePrefix }),
           });
-          if (res.ok) location.reload(); else el.disabled = false;
-        } catch { el.disabled = false; }
+          if (res.ok) { location.reload(); }
+          else { excludeInFlight = false; el.disabled = false; el.classList.remove("pbtn-busy"); progressEl?.classList.remove("active"); }
+        } catch { excludeInFlight = false; el.disabled = false; el.classList.remove("pbtn-busy"); progressEl?.classList.remove("active"); }
       });
     });
   </script>

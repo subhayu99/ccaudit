@@ -5,6 +5,7 @@ import type { TopicSummary } from "../db/topics";
 interface Props { tree: LibraryTree; topics?: TopicSummary[]; activeRepo?: string; activeWorkdir?: string; activeTopic?: number; mode?: string; }
 const { tree, topics = [], activeRepo, activeWorkdir, activeTopic, mode } = Astro.props;
 ---
+<div id="topbar-progress" aria-hidden="true"></div>
 <div class="flex flex-col h-full" style="color:var(--text-dim);">
   <div class="flex items-center gap-2 px-4 pt-4 pb-3">
     <div class="w-[22px] h-[22px] rounded-md grid place-items-center font-bold text-[13px]"
@@ -85,10 +86,15 @@ const { tree, topics = [], activeRepo, activeWorkdir, activeTopic, mode } = Astr
   .repo-group[data-open="true"] .caret { transform:rotate(90deg); }
   .children { display:none; }
   .repo-group[data-open="true"] .children { display:block; }
-  .hide-btn { display:none; background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:11px; padding:0 2px; margin-left:6px; }
-  .hide-btn:hover { color:var(--c-orange); }
-  .lib-item:hover .hide-btn { display:inline; }
-  .lib-item:hover .ct { display:none; }
+  /* Always present (keyboard-focusable, touch-reachable) but low-emphasis at rest. */
+  .hide-btn { opacity:.35; background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:11px; padding:0 2px; margin-left:6px; transition:opacity .12s, color .12s; }
+  .hide-btn:hover { color:var(--c-orange); opacity:1; }
+  .lib-item:hover .hide-btn, .lib-item:focus-within .hide-btn { opacity:1; }
+  .hide-btn:focus-visible { opacity:1; outline:1px solid var(--amber-bright); outline-offset:1px; border-radius:4px; }
+  .hide-btn[disabled] { cursor:default; opacity:.5; }
+  /* Thin top-of-viewport progress bar shown the instant a destructive action fires. */
+  #topbar-progress { position:fixed; top:0; left:0; height:2px; width:0; z-index:60; background:linear-gradient(90deg,var(--amber),var(--c-orange)); opacity:0; pointer-events:none; transition:width .3s ease, opacity .2s; }
+  #topbar-progress.active { opacity:1; width:88%; transition:width 8s cubic-bezier(.1,.7,.2,1), opacity .15s; }
 </style>
 
 <script>
@@ -116,23 +122,33 @@ const { tree, topics = [], activeRepo, activeWorkdir, activeTopic, mode } = Astr
     });
   }
 
+  // Shared thin top progress bar — immediate feedback before a navigating action.
+  const progressEl = document.getElementById("topbar-progress");
+  function startProgress() { progressEl?.classList.add("active"); }
+  function stopProgress() { progressEl?.classList.remove("active"); }
+
   // Hide a repo (all its workdirs) or a single workdir from every view.
+  let hideInFlight = false;
   document.querySelectorAll(".hide-btn").forEach((b) => {
     b.addEventListener("click", async (e) => {
       e.preventDefault(); e.stopPropagation();
+      if (hideInFlight) return; // guard against double-clicks across all hide buttons
       const el = e.currentTarget as HTMLButtonElement;
       let prefixes: string[] = [];
       try { prefixes = JSON.parse(el.dataset.hide || "[]"); } catch {}
       if (!prefixes.length) return;
+      hideInFlight = true;
       el.disabled = true;
+      startProgress();
       try {
         const res = await fetch("/api/exclusions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "add", prefixes }),
         });
-        if (res.ok) window.location.href = "/"; else el.disabled = false;
-      } catch { el.disabled = false; }
+        if (res.ok) { window.location.href = "/"; }
+        else { hideInFlight = false; el.disabled = false; stopProgress(); }
+      } catch { hideInFlight = false; el.disabled = false; stopProgress(); }
     });
   });
 </script>

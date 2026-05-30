@@ -27,6 +27,7 @@ const json = JSON.stringify(items);
   .cmdk-item .sub { color:var(--text-faint); font-size:11.5px; font-family:var(--mono); white-space:nowrap; }
   .cmdk-item .dot { width:7px; height:7px; border-radius:50%; flex:none; }
   .cmdk-item[aria-selected="true"] { background:var(--raise); }
+  .cmdk-empty { padding:14px 14px; color:var(--text-faint); font-size:13px; text-align:center; }
   .cmdk-foot { display:flex; gap:16px; padding:8px 14px; border-top:1px solid var(--border-soft); color:var(--text-faint); font-size:11px; }
 </style>
 
@@ -38,29 +39,47 @@ const json = JSON.stringify(items);
   const all: Item[] = JSON.parse(document.getElementById("cmdk-data")!.dataset.items || "[]");
   let results: Item[] = [];
   let sel = 0;
+  let pendingSearchHref = ""; // full-text fallback for the empty-results state
 
   const colorFor = (k: string) =>
     k === "repo" ? "var(--c-green)" : k === "workdir" ? "var(--violet)" : k === "search" ? "var(--amber)" : "var(--c-blue)";
 
   function render() {
     listEl.innerHTML = "";
+    if (results.length === 0) {
+      const li = document.createElement("li");
+      li.className = "cmdk-empty";
+      li.textContent = "No matches — press ↵ for full-text search";
+      listEl.appendChild(li);
+      return;
+    }
+    let selEl: HTMLElement | null = null;
     results.forEach((r, i) => {
       const li = document.createElement("li");
       li.className = "cmdk-item";
-      li.setAttribute("aria-selected", String(i === sel));
+      const isSel = i === sel;
+      li.setAttribute("aria-selected", String(isSel));
       li.innerHTML = `<span class="dot" style="background:${colorFor(r.kind)}"></span><span class="lbl"></span><span class="sub"></span>`;
       (li.querySelector(".lbl") as HTMLElement).textContent = r.label;
       (li.querySelector(".sub") as HTMLElement).textContent = r.sub;
       li.addEventListener("click", () => go(r));
       listEl.appendChild(li);
+      if (isSel) selEl = li;
     });
+    // Keep the highlighted row visible during keyboard navigation.
+    // (cast: TS can't track the assignment inside the forEach callback above.)
+    (selEl as HTMLElement | null)?.scrollIntoView({ block: "nearest" });
   }
   function compute(q: string) {
     const query = q.trim().toLowerCase();
     if (!query) { results = all.slice(0, 30); }
     else {
-      results = all.filter((it) => it.label.toLowerCase().includes(query) || it.sub.toLowerCase().includes(query)).slice(0, 30);
-      results.unshift({ label: `Search history for “${q.trim()}”`, sub: "full-text", href: `/search?q=${encodeURIComponent(q.trim())}`, kind: "search" });
+      const matches = all.filter((it) => it.label.toLowerCase().includes(query) || it.sub.toLowerCase().includes(query)).slice(0, 30);
+      // No literal matches → show the muted empty row; ↵ still triggers full-text search.
+      results = matches.length
+        ? [{ label: `Search history for “${q.trim()}”`, sub: "full-text", href: `/search?q=${encodeURIComponent(q.trim())}`, kind: "search" }, ...matches]
+        : [];
+      pendingSearchHref = `/search?q=${encodeURIComponent(q.trim())}`;
     }
     sel = 0; render();
   }
@@ -74,7 +93,11 @@ const json = JSON.stringify(items);
     if (e.key === "Escape") { close(); }
     else if (e.key === "ArrowDown") { e.preventDefault(); sel = Math.min(sel + 1, results.length - 1); render(); }
     else if (e.key === "ArrowUp") { e.preventDefault(); sel = Math.max(sel - 1, 0); render(); }
-    else if (e.key === "Enter") { e.preventDefault(); go(results[sel]); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      if (results.length === 0) { if (pendingSearchHref) window.location.href = pendingSearchHref; }
+      else go(results[sel]);
+    }
   });
   input.addEventListener("input", () => compute(input.value));
   document.getElementById("cmdk-backdrop")!.addEventListener("click", close);
