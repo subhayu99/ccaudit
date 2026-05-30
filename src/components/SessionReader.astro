@@ -8,6 +8,7 @@ import { renderMarkdown } from "../lib/markdown";
 import { formatTimestamp, truncate, shortSessionId } from "../lib/render";
 import { cleanPromptText } from "../lib/clean-prompt";
 import { segmentSession } from "../lib/segment";
+import { getLabels, spineHash } from "../db/labels";
 import { INDEX_DB_PATH } from "../paths";
 
 interface Props { sessionId: string; }
@@ -24,7 +25,13 @@ const messages = !session
   : tailLoaded
     ? getSessionMessagesTail(db, sessionId, RAW_TAIL)
     : getSessionMessages(db, sessionId);
+
+// Deterministic segments + any cached AI labels (while the db is still open).
+const segments = segmentSession(messages);
+const cachedLabels = getLabels(db, sessionId);
+const labelsFresh = !!cachedLabels && cachedLabels.spineHash === spineHash(segments);
 db.close();
+const segLabel = (i: number): string | null => (labelsFresh ? cachedLabels!.labels[i] ?? null : null);
 
 const classified = messages.map((m) => ({ m, kind: classifyMessage(m) }));
 const allVisible = classified.filter((c) => c.kind !== "noise");
@@ -35,9 +42,7 @@ const CAP = 500;
 const truncatedBy = Math.max(0, allVisible.length - CAP);
 const visible = truncatedBy > 0 ? allVisible.slice(allVisible.length - CAP) : allVisible;
 
-// Deterministic topic-segments over the messages we loaded. Map each segment's
-// opening line to the segment so we can drop a divider before that turn.
-const segments = segmentSession(messages);
+// Map each segment's opening line to the segment so we can drop a divider there.
 const segByStartLine = new Map(segments.map((s) => [s.startLine, s]));
 
 // Pre-render markdown + tool labels for each visible turn.
@@ -111,7 +116,7 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
             {segByStartLine.has(b.lineNo) && segByStartLine.get(b.lineNo)!.index > 0 && (
               <div class="seg-divider" id={`seg${segByStartLine.get(b.lineNo)!.index}`}>
                 <span class="seg-dot"></span>
-                <span class="seg-label">{segByStartLine.get(b.lineNo)!.opener}</span>
+                <span class="seg-label">{segLabel(segByStartLine.get(b.lineNo)!.index) ?? segByStartLine.get(b.lineNo)!.opener}</span>
                 <span class="seg-meta">{segByStartLine.get(b.lineNo)!.reason === "compact" ? "after compact" : `${segByStartLine.get(b.lineNo)!.gapMinutes}m gap`} · {segByStartLine.get(b.lineNo)!.turnCount} turns</span>
               </div>
             )}
@@ -136,11 +141,14 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
 
     {segments.length > 1 && (
       <nav class="seg-nav" aria-label="segments">
-        <div class="seg-nav-head">{segments.length} threads</div>
+        <div class="seg-nav-head">
+          {segments.length} threads
+          {!labelsFresh && <button id="name-threads" class="name-btn" data-session={sessionId}>✨ Name</button>}
+        </div>
         {segments.map((s) => (
           <a class="seg-nav-item" href={`#${s.index === 0 ? `m${s.startLine}` : `seg${s.index}`}`}>
             <span class="seg-nav-dot" data-reason={s.reason}></span>
-            <span class="seg-nav-text">{s.opener}</span>
+            <span class="seg-nav-text">{segLabel(s.index) ? `✨ ${segLabel(s.index)}` : s.opener}</span>
           </a>
         ))}
       </nav>
@@ -179,6 +187,8 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
   .seg-nav-dot { width:6px; height:6px; border-radius:50%; flex:none; background:var(--violet); }
   .seg-nav-dot[data-reason="compact"] { background:var(--c-orange); }
   .seg-nav-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .name-btn { float:right; background:var(--raise); color:var(--amber-bright); border:1px solid var(--border); border-radius:6px; font-size:10.5px; padding:2px 7px; cursor:pointer; }
+  .name-btn[disabled] { opacity:.6; cursor:progress; }
   .trunc-note { background:var(--panel); border:1px dashed var(--border); border-radius:9px; padding:9px 13px; margin-bottom:20px; font-size:12.5px; color:var(--text-faint); max-width:74ch; }
   .turn { margin-bottom:22px; max-width:74ch; }
   .role { font-size:11px; letter-spacing:.08em; text-transform:uppercase; font-weight:700; margin-bottom:7px; }
@@ -212,6 +222,23 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
   .mini .m.c { background:var(--c-orange); width:8px; }
 </style>
 
+<script is:inline>
+  (function () {
+    var btn = document.getElementById("name-threads");
+    if (!btn) return;
+    btn.addEventListener("click", async function () {
+      btn.disabled = true; btn.textContent = "✨ Naming…";
+      try {
+        var res = await fetch("/api/label", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: btn.dataset.session }),
+        });
+        if (res.ok) location.reload();
+        else { btn.disabled = false; btn.textContent = "✨ Name"; }
+      } catch (e) { btn.disabled = false; btn.textContent = "✨ Name"; }
+    });
+  })();
+</script>
 <script is:inline define:vars={{ resumeCmd }}>
   const btn = document.getElementById("resume-btn");
   const dlg = document.getElementById("resume-dialog");
