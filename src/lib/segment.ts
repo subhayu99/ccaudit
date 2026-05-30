@@ -72,7 +72,7 @@ export function segmentSession(messages: MessageRow[], opts: SegmentOptions = {}
         startedAt: m.timestamp,
         endedAt: m.timestamp,
         turnCount: 0,
-        opener: openerOf(m) || "(untitled)",
+        opener: "(untitled)",
         reason,
         gapMinutes,
       };
@@ -80,6 +80,11 @@ export function segmentSession(messages: MessageRow[], opts: SegmentOptions = {}
     }
     cur.turnCount += 1;
     cur.endedAt = m.timestamp;
+    // Opener = the first turn in the segment with non-empty (cleaned) text.
+    if (cur.opener === "(untitled)") {
+      const o = openerOf(m);
+      if (o) cur.opener = o;
+    }
     prev = m;
   }
 

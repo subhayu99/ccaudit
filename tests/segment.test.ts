@@ -72,4 +72,13 @@ describe("segmentSession", () => {
   it("returns no segments for a session with no user-text turns", () => {
     expect(segmentSession([compact(0, 0)])).toEqual([]);
   });
+
+  it("uses the first non-empty turn as the opener when the segment opens with boilerplate", () => {
+    const segs = segmentSession([
+      user(0, 0, "/tmp/attachments/pasted.txt"), // cleans to empty
+      user(2, 5, "the real ask"),
+    ]);
+    expect(segs).toHaveLength(1);
+    expect(segs[0]!.opener).toBe("the real ask");
+  });
 });

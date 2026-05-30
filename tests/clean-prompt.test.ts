@@ -22,6 +22,11 @@ describe("cleanPromptText", () => {
     expect(cleanPromptText(t)).toBe("Had a call with Aditya.");
   });
 
+  it("strips a leading .context/attachments path (Conductor pasted attachment)", () => {
+    const t = "/Users/subhayu/conductor/workspaces/backend/delhi/.context/attachments/pasted_text.txt\nfirst figure out what's left to test";
+    expect(cleanPromptText(t)).toBe("first figure out what's left to test");
+  });
+
   it("returns empty string when the message is nothing but injected blocks", () => {
     const t = "<system_instruction>\nboilerplate only\n</system_instruction>";
     expect(cleanPromptText(t)).toBe("");

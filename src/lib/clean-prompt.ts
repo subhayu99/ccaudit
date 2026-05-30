@@ -19,8 +19,9 @@
 // The backreference \1 forces the close tag to match the open tag exactly.
 const LEADING_INSTRUCTION_BLOCK = /^\s*<(system[_-]instruction)\s*>[\s\S]*?<\/\1\s*>/i;
 
-// A leading line that is solely a Conductor attachment path.
-const LEADING_ATTACHMENT_PATH = /^\s*\/tmp\/attachments\/\S+[ \t]*\r?\n?/;
+// A leading line that is solely an attachment path — Conductor pastes these as
+// `/tmp/attachments/…` or `…/.context/attachments/…` before the real prompt.
+const LEADING_ATTACHMENT_PATH = /^\s*\/\S*attachments\/\S+[ \t]*\r?\n?/i;
 
 // claude-mem observer sessions: every user message is a wrapper around the
 // primary session's real request. Anchored at the start so a normal sentence
