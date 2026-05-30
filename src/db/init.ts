@@ -101,6 +101,17 @@ CREATE TABLE IF NOT EXISTS excluded_prefixes (
   prefix      TEXT PRIMARY KEY,
   created_at  INTEGER NOT NULL
 );
+
+-- Layer 2a: AI-generated names for a session's segments. One row per session,
+-- pinned to a spine hash so we only re-label when the segmentation changes.
+CREATE TABLE IF NOT EXISTS segment_labels (
+  session_id  TEXT PRIMARY KEY,
+  spine_hash  TEXT NOT NULL,
+  labels_json TEXT NOT NULL,
+  model       TEXT,
+  cost_usd    REAL,
+  created_at  INTEGER NOT NULL
+);
 `;
 
 export function openDb(path: string): Database.Database {
