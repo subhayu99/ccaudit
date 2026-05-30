@@ -107,6 +107,10 @@ export function searchMessages(
   const ftsQuery = escapeFtsQuery(query);
   if (!ftsQuery) return [];
   const excl = sessionKeepCondition(db);
+  // When no exclusions are set, omit the session-id subquery entirely: it would
+  // otherwise force a per-row scan of the full sessions id-set for nothing.
+  const exclClause =
+    excl.sql === "1" ? "" : `AND m.session_id IN (SELECT id FROM sessions WHERE ${excl.sql})`;
   // FTS5 snippet(): table, column, before, after, ellipsis, max-tokens
   const rows = db
     .prepare(
@@ -117,7 +121,7 @@ export function searchMessages(
          FROM messages_fts
          JOIN messages m ON m.rowid = messages_fts.rowid
         WHERE messages_fts MATCH @q
-          AND m.session_id IN (SELECT id FROM sessions WHERE ${excl.sql})
+          ${exclClause}
         ORDER BY rank ASC
         LIMIT @limit`
     )
@@ -151,6 +155,8 @@ export function searchMessagesExact(
 ): SearchHit[] {
   const limit = opts.limit ?? 50;
   const excl = sessionKeepCondition(db);
+  const exclClause =
+    excl.sql === "1" ? "" : `AND session_id IN (SELECT id FROM sessions WHERE ${excl.sql})`;
   const rows = db
     .prepare(
       `SELECT session_id AS sessionId,
@@ -158,7 +164,7 @@ export function searchMessagesExact(
               text_content AS text
          FROM messages
         WHERE text_content LIKE '%' || @q || '%' COLLATE NOCASE
-          AND session_id IN (SELECT id FROM sessions WHERE ${excl.sql})
+          ${exclClause}
         ORDER BY session_id, line_no
         LIMIT @limit`
     )
@@ -189,6 +195,8 @@ export function searchMessagesRegex(
   }
   // ccaudit_regexp UDF is registered once per connection in openDb (src/db/init.ts).
   const excl = sessionKeepCondition(db);
+  const exclClause =
+    excl.sql === "1" ? "" : `AND session_id IN (SELECT id FROM sessions WHERE ${excl.sql})`;
   const rows = db
     .prepare(
       `SELECT session_id   AS sessionId,
@@ -197,7 +205,7 @@ export function searchMessagesRegex(
          FROM messages
         WHERE text_content IS NOT NULL
           AND ccaudit_regexp(@pat, text_content) = 1
-          AND session_id IN (SELECT id FROM sessions WHERE ${excl.sql})
+          ${exclClause}
         ORDER BY session_id, line_no
         LIMIT @limit`
     )

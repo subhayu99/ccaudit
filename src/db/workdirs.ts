@@ -87,7 +87,9 @@ export function listWorkdirs(db: Database.Database): WorkdirRecord[] {
   }>;
   const byPath = new Map<string, string[]>();
   for (const { path, token } of tokenRows) {
-    byPath.set(path, [...(byPath.get(path) ?? []), token]);
+    const list = byPath.get(path);
+    if (list) list.push(token);
+    else byPath.set(path, [token]);
   }
   return rows.map((r) => rowToRecord(r, byPath.get(r.path) ?? []));
 }

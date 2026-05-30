@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { listWorkdirs } from "./workdirs.js";
 import { computeRepoComponents } from "../identity/components.js";
-import { sessionKeepCondition } from "./exclusions.js";
+import { listExclusions, sessionKeepCondition } from "./exclusions.js";
 import { cleanPromptText } from "../lib/clean-prompt.js";
 
 export type DayLabel = "Today" | "Yesterday" | "Earlier this week" | "Older";
@@ -62,7 +62,32 @@ type LibRow = {
   last_activity: number | null; message_count: number; compact_count: number;
 };
 
+// Per-connection memo cache for getLibraryTree. Keyed by Database instance so
+// tests (and multiple DBs) never cross-contaminate. Invalidated when the cheap
+// signature (newest indexed_at, session count, exclusion set) changes.
+const treeCache = new WeakMap<Database.Database, { key: string; tree: LibraryTree }>();
+
+/** Cheap signature that changes whenever the tree would differ: newest indexed_at,
+ *  total session count, and the (small) set of excluded prefixes. */
+function libraryTreeKey(db: Database.Database): string {
+  const meta = db
+    .prepare("SELECT MAX(indexed_at) AS maxIndexedAt, COUNT(*) AS sessionCount FROM sessions")
+    .get() as { maxIndexedAt: number | null; sessionCount: number };
+  const exclusionsSig = listExclusions(db).join("");
+  return `${meta.maxIndexedAt ?? ""}|${meta.sessionCount}|${exclusionsSig}`;
+}
+
 export function getLibraryTree(db: Database.Database): LibraryTree {
+  const key = libraryTreeKey(db);
+  const cached = treeCache.get(db);
+  if (cached && cached.key === key) return cached.tree;
+
+  const tree = buildLibraryTree(db);
+  treeCache.set(db, { key, tree });
+  return tree;
+}
+
+function buildLibraryTree(db: Database.Database): LibraryTree {
   const workdirs = listWorkdirs(db);
   const { repos, repoByPath } = computeRepoComponents(workdirs);
   const existsByPath = new Map(workdirs.map((w) => [w.path, w.existsOnDisk]));
@@ -86,7 +111,9 @@ export function getLibraryTree(db: Database.Database): LibraryTree {
       lastActivity: r.last_activity, messageCount: r.message_count,
       compactCount: r.compact_count, workdirPath: r.cwd,
     };
-    byWorkdir.set(r.cwd, [...(byWorkdir.get(r.cwd) ?? []), s]);
+    const list = byWorkdir.get(r.cwd);
+    if (list) list.push(s);
+    else byWorkdir.set(r.cwd, [s]);
   }
 
   // assemble repos from components that have ≥1 visible session
@@ -179,7 +206,9 @@ export function listSessionsGrouped(
   const buckets = new Map<DayLabel, ListItem[]>();
   for (const it of items) {
     const b = dayBucket(it.lastActivity, nowMs);
-    buckets.set(b, [...(buckets.get(b) ?? []), it]);
+    const list = buckets.get(b);
+    if (list) list.push(it);
+    else buckets.set(b, [it]);
   }
   const groups: ListGroup[] = DAY_ORDER
     .filter((l) => buckets.has(l))
