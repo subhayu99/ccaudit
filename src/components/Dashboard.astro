@@ -3,9 +3,11 @@
 import { getDb } from "../db/init";
 import { getIndexStats } from "../db/stats";
 import { getActivityByDay, getToolUsage } from "../db/analytics";
+import { CLAUDE_PROJECTS_DIR } from "../paths";
 
 const db = getDb();
 const stats = getIndexStats(db);
+const isEmpty = stats.totalSessions === 0;
 const activity = getActivityByDay(db);
 const tools = getToolUsage(db).slice(0, 12);
 
@@ -29,6 +31,20 @@ const HEAT = ["var(--raise)", "rgba(127,174,122,.35)", "rgba(127,174,122,.6)", "
 const toolMax = Math.max(1, ...tools.map((t) => t.count));
 const totalTools = tools.reduce((s, t) => s + t.count, 0);
 ---
+{isEmpty ? (
+  <div class="p-8 max-w-[680px]">
+    <h2 class="font-serif text-[26px] font-semibold mb-2" style="color:var(--text);">No sessions indexed yet</h2>
+    <p class="text-[14px] mb-5" style="color:var(--text-dim);">ccaudit looked for Claude Code session logs in:</p>
+    <pre class="rounded-lg px-4 py-3 mb-5 text-[13px] font-mono-w overflow-x-auto" style="background:var(--panel); border:1px solid var(--border-soft); color:var(--amber-bright);">{CLAUDE_PROJECTS_DIR}</pre>
+    <p class="text-[14px] mb-3" style="color:var(--text-dim);">…and found nothing to index. A few things to check:</p>
+    <ul class="text-[13.5px] space-y-2 mb-6" style="color:var(--text-dim); list-style:disc; padding-left:1.2em;">
+      <li>Have you used Claude Code on this machine? Sessions appear under <span class="font-mono-w" style="color:var(--text);">~/.claude/projects/</span> after your first run.</li>
+      <li>Logs somewhere else? Point ccaudit at them with the <span class="font-mono-w" style="color:var(--text);">CCAUDIT_PROJECTS_DIR</span> environment variable, then restart.</li>
+      <li>Already have sessions? Run <span class="font-mono-w" style="color:var(--text);">ccaudit reindex</span> and reload this page.</li>
+    </ul>
+    <p class="text-[13px]" style="color:var(--text-faint);">The index lives at <span class="font-mono-w">~/.ccaudit/index.db</span> — safe to delete to start fresh.</p>
+  </div>
+) : (
 <div class="p-8 max-w-[860px]">
   <h2 class="font-serif text-[26px] font-semibold mb-1" style="color:var(--text);">Your Claude history</h2>
   <p class="text-[14px] mb-6" style="color:var(--text-dim);">Pick a repository or session on the left, or press <kbd class="font-mono-w" style="background:var(--raise);border:1px solid var(--border);border-radius:5px;padding:1px 6px;font-size:11px;">⌘K</kbd> to jump anywhere.</p>
@@ -69,6 +85,7 @@ const totalTools = tools.reduce((s, t) => s + t.count, 0);
     ))}
   </div>
 </div>
+)}
 
 <style>
   .heatmap { display:grid; grid-auto-flow:column; grid-template-rows:repeat(7,11px); grid-auto-columns:11px; gap:3px; }

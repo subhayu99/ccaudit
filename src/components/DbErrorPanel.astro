@@ -1,0 +1,18 @@
+---
+// Recoverable error panel shown when a DB read throws (missing/corrupt index).
+interface Props { message: string; }
+const { message } = Astro.props;
+---
+<div class="p-8 max-w-[680px]">
+  <h2 class="font-serif text-[24px] font-semibold mb-2" style="color:var(--c-orange);">Couldn't read the index</h2>
+  <p class="text-[14px] mb-4" style="color:var(--text-dim);">
+    ccaudit's database at <span class="font-mono-w" style="color:var(--text);">~/.ccaudit/index.db</span> couldn't be read.
+    It may be missing, corrupt, or from an incompatible version.
+  </p>
+  <pre class="rounded-lg px-4 py-3 mb-5 text-[12.5px] font-mono-w overflow-x-auto" style="background:var(--panel); border:1px solid rgba(180,60,60,.35); color:#e0a0a0;">{message}</pre>
+  <p class="text-[14px] mb-3" style="color:var(--text-dim);">To recover:</p>
+  <ul class="text-[13.5px] space-y-2 mb-2" style="color:var(--text-dim); list-style:disc; padding-left:1.2em;">
+    <li>Run <span class="font-mono-w" style="color:var(--text);">ccaudit reindex</span> to rebuild the index from your session logs.</li>
+    <li>Still broken? Delete <span class="font-mono-w" style="color:var(--text);">~/.ccaudit/index.db</span> and reindex — the source logs in <span class="font-mono-w" style="color:var(--text);">~/.claude/projects/</span> are never modified.</li>
+  </ul>
+</div>

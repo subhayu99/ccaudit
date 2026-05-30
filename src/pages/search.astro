@@ -3,7 +3,7 @@ import AppShell from "../layouts/AppShell.astro";
 import Sidebar from "../components/Sidebar.astro";
 import { getDb } from "../db/init";
 import { searchMessages, searchMessagesExact, searchMessagesRegex } from "../db/messages";
-import { getSession } from "../db/sessions";
+import { getSessionsByIds } from "../db/sessions";
 import { getLibraryTree } from "../db/library";
 import { shortSessionId, formatTimestamp } from "../lib/render";
 import type { Session } from "../types";
@@ -23,7 +23,8 @@ if (query) {
       mode === "exact" ? searchMessagesExact(db, query, { limit: 50 })
       : mode === "regex" ? searchMessagesRegex(db, query, { limit: 50 })
       : searchMessages(db, query, { limit: 50 });
-    hits = raw.map((h) => ({ ...h, session: getSession(db, h.sessionId) }));
+    const sessions = getSessionsByIds(db, raw.map((h) => h.sessionId));
+    hits = raw.map((h) => ({ ...h, session: sessions.get(h.sessionId) ?? null }));
   } catch (e) {
     searchError = e instanceof Error ? e.message : String(e);
   }
@@ -72,7 +73,7 @@ const modes = [
       <div class="space-y-3">
         <p class="text-sm" style="color:var(--text-faint);">{hits.length} result{hits.length === 1 ? "" : "s"} for <strong style="color:var(--text-dim);">"{query}"</strong></p>
         {hits.map((h) => (
-          <a href={`/?session=${h.sessionId}`} class="shit block rounded-lg p-4">
+          <a href={`/?session=${h.sessionId}#m${h.lineNo}`} class="shit block rounded-lg p-4">
             <div class="flex items-center gap-2 text-sm mb-2" style="color:var(--text-faint);">
               <span class="font-mono-w" style="color:var(--amber);">{shortSessionId(h.sessionId)}</span>
               <span>·</span><span>{h.session?.projectLabel ?? "unknown"}</span>

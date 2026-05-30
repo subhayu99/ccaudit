@@ -76,6 +76,22 @@ export function getSession(db: Database.Database, id: string): Session | null {
   return row ? rowToSession(row) : null;
 }
 
+/** Fetch many sessions in one query, returned as a Map keyed by id (avoids N+1 round-trips). */
+export function getSessionsByIds(db: Database.Database, ids: string[]): Map<string, Session> {
+  const out = new Map<string, Session>();
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return out;
+  const placeholders = unique.map(() => "?").join(",");
+  const rows = db
+    .prepare(`SELECT * FROM sessions WHERE id IN (${placeholders})`)
+    .all(...unique) as SessionRowSql[];
+  for (const row of rows) {
+    const s = rowToSession(row);
+    out.set(s.id, s);
+  }
+  return out;
+}
+
 export type ListSessionsOptions = {
   limit?: number;
   offset?: number;

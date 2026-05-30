@@ -5,14 +5,23 @@ import { getDb } from "../db/init";
 import { getGraphData } from "../db/graph";
 import { getRepoGraphData } from "../db/repo-graph";
 import { getTopicGraphData } from "../db/topic-graph";
-import { getLibraryTree } from "../db/library";
+import { getLibraryTree, type LibraryTree } from "../db/library";
 
 const vparam = Astro.url.searchParams.get("view");
 const view = vparam === "repos" ? "repos" : vparam === "topics" ? "topics" : "folders";
 
+type GraphLike = { nodes: Array<{ type: string }>; links: unknown[] };
+let dbError = "";
+let graph: GraphLike = { nodes: [], links: [] };
+let tree: LibraryTree = { repos: [], totalCount: 0 };
+
 const db = getDb();
-const graph = view === "topics" ? getTopicGraphData(db) : view === "repos" ? getRepoGraphData(db) : getGraphData(db);
-const tree = getLibraryTree(db);
+try {
+  graph = view === "topics" ? getTopicGraphData(db) : view === "repos" ? getRepoGraphData(db) : getGraphData(db);
+  tree = getLibraryTree(db);
+} catch (e) {
+  dbError = e instanceof Error ? e.message : String(e);
+}
 
 const count = (t: string) => graph.nodes.filter((n) => n.type === t).length;
 
@@ -24,6 +33,11 @@ const graphJson = JSON.stringify(graph);
 <AppShell title="ccaudit — graph">
   <Sidebar slot="sidebar" tree={tree} />
   <div slot="reader" class="flex flex-col h-screen p-5">
+  {dbError && (
+    <div class="rounded-lg p-3 mb-3 text-sm" style="background:rgba(180,60,60,.12); border:1px solid rgba(180,60,60,.4); color:#e0a0a0;">
+      <strong>Couldn't load graph data:</strong> {dbError} — run <span class="font-mono-w">ccaudit reindex</span>.
+    </div>
+  )}
   <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
     <h1 class="font-serif text-2xl font-semibold" style="color:var(--text);">Graph</h1>
     <div class="flex items-center gap-4 text-sm" style="color:var(--text-dim);">

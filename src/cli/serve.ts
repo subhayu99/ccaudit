@@ -24,6 +24,10 @@ export async function serveCommand(opts: { port?: string; open?: boolean }): Pro
   try {
     const stats = await indexAll(db, { baseDir: CLAUDE_PROJECTS_DIR });
     console.log(kleur.dim(`  ${stats.sessionsIndexed} indexed, ${stats.sessionsSkipped} skipped`));
+    if (stats.sessionsIndexed === 0 && stats.sessionsSkipped === 0) {
+      console.log(kleur.yellow(`  No Claude Code sessions found in ${CLAUDE_PROJECTS_DIR}`));
+      console.log(kleur.dim(`  Set CCAUDIT_PROJECTS_DIR to point elsewhere, then re-run.`));
+    }
   } finally {
     db.close();
   }

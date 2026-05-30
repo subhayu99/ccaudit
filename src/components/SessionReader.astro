@@ -93,7 +93,16 @@ const noiseCount = classified.length - visible.length;
 const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
 ---
 {!session ? (
-  <div class="p-8" style="color:var(--text-dim);">Session not found.</div>
+  <div class="p-8 max-w-[560px]">
+    <h2 class="font-serif text-[20px] font-semibold mb-2" style="color:var(--text);">Session not found</h2>
+    <p class="text-[13.5px] mb-3" style="color:var(--text-dim);">
+      No indexed session with id <span class="font-mono-w" style="color:var(--amber);">{shortSessionId(sessionId)}</span>.
+      Its source log may have been removed or renamed since the last index.
+    </p>
+    <p class="text-[13.5px]" style="color:var(--text-dim);">
+      Run <span class="font-mono-w" style="color:var(--text);">ccaudit reindex</span> to refresh, or <a href="/" style="color:var(--amber-bright);">go back to your history</a>.
+    </p>
+  </div>
 ) : (
   <div class="reader-wrap">
     <header class="px-7 pt-6 pb-4" style="border-bottom:1px solid var(--border-soft);">
@@ -195,7 +204,12 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
   .name-btn { float:right; background:var(--raise); color:var(--amber-bright); border:1px solid var(--border); border-radius:6px; font-size:10.5px; padding:2px 7px; cursor:pointer; }
   .name-btn[disabled] { opacity:.6; cursor:progress; }
   .trunc-note { background:var(--panel); border:1px dashed var(--border); border-radius:9px; padding:9px 13px; margin-bottom:20px; font-size:12.5px; color:var(--text-faint); max-width:74ch; }
-  .turn { margin-bottom:22px; max-width:74ch; }
+  .turn { margin-bottom:22px; max-width:74ch; scroll-margin-top:80px; }
+  .deep-hit { animation: deepHit 2.4s ease-out; border-radius:8px; }
+  @keyframes deepHit {
+    0%, 30% { box-shadow:0 0 0 2px var(--amber); background:rgba(210,168,95,.12); }
+    100% { box-shadow:0 0 0 0 transparent; background:transparent; }
+  }
   .role { font-size:11px; letter-spacing:.08em; text-transform:uppercase; font-weight:700; margin-bottom:7px; }
   .role.user { color:var(--amber); }
   .role.assistant { color:var(--violet); }
@@ -250,8 +264,38 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
   if (btn && dlg) {
     btn.addEventListener("click", () => dlg.showModal());
     document.getElementById("resume-close")?.addEventListener("click", () => dlg.close());
-    document.getElementById("resume-copy")?.addEventListener("click", async () => {
-      try { await navigator.clipboard.writeText(resumeCmd); } catch {}
+    const copyBtn = document.getElementById("resume-copy");
+    copyBtn?.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(resumeCmd);
+        const prev = copyBtn.textContent;
+        copyBtn.textContent = "Copied ✓";
+        setTimeout(() => { copyBtn.textContent = prev; }, 1500);
+      } catch {
+        // Clipboard blocked (e.g. non-secure context): select the command so the user can ⌘C.
+        const pre = document.querySelector(".resume-pre");
+        if (pre) {
+          const range = document.createRange();
+          range.selectNodeContents(pre);
+          const sel = window.getSelection();
+          sel?.removeAllRanges();
+          sel?.addRange(range);
+        }
+      }
     });
   }
+</script>
+<script is:inline>
+  // Deep-link from search: /?session=<id>#m<lineNo> scrolls to and briefly highlights the match.
+  (function () {
+    const hash = location.hash;
+    if (!/^#m\d+$/.test(hash)) return;
+    const el = document.getElementById(hash.slice(1));
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ block: "center" });
+      el.classList.add("deep-hit");
+      setTimeout(() => el.classList.remove("deep-hit"), 2400);
+    });
+  })();
 </script>

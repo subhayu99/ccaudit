@@ -6,8 +6,9 @@ import SessionReader from "../components/SessionReader.astro";
 import CommandPalette from "../components/CommandPalette.astro";
 import Dashboard from "../components/Dashboard.astro";
 import { getDb } from "../db/init";
-import { getLibraryTree, listSessionsGrouped, type Selection } from "../db/library";
+import { getLibraryTree, listSessionsGrouped, type Selection, type LibraryTree } from "../db/library";
 import { listTopics, getTopic } from "../db/topics";
+import DbErrorPanel from "../components/DbErrorPanel.astro";
 
 const url = Astro.url;
 const repo = url.searchParams.get("repo") ?? undefined;
@@ -16,43 +17,69 @@ const topicId = url.searchParams.get("topic") ? Number(url.searchParams.get("top
 const mode = (url.searchParams.get("mode") as "recent" | "all" | null) ?? undefined;
 const session = url.searchParams.get("session") ?? undefined;
 
+// Defaults keep the sidebar/list renderable even if the DB read fails; the reader
+// slot then shows a recoverable error panel instead of a raw 500.
+let dbError = "";
+let tree: LibraryTree = { repos: [], totalCount: 0 };
+let topics: ReturnType<typeof listTopics> = [];
+let list: ReturnType<typeof listSessionsGrouped> = { header: { title: "", subtitle: null }, groups: [] };
+let selParams = "";
+let paletteItems: Array<{ label: string; sub: string; href: string; kind: string }> = [];
+
 const db = getDb();
-const tree = getLibraryTree(db);
-const topics = listTopics(db);
-const topic = topicId !== undefined ? getTopic(db, topicId) : null;
-const sel: Selection = repo
-  ? { repo }
-  : workdir
-    ? { workdir }
-    : topic
-      ? { topic: topicId!, topicName: topic.name, topicIds: topic.sessionIds }
-      : { mode: mode ?? "recent" };
-const list = listSessionsGrouped(db, sel, Date.now(), tree); // reuse the tree (one build per request)
-
-// Preserve the current selection when opening a session, so the sidebar + list
-// stay put instead of resetting to the default view.
-const selParams = repo
-  ? `repo=${encodeURIComponent(repo)}`
-  : topicId !== undefined
-    ? `topic=${topicId}`
+try {
+  tree = getLibraryTree(db);
+  topics = listTopics(db);
+  const topic = topicId !== undefined ? getTopic(db, topicId) : null;
+  const sel: Selection = repo
+    ? { repo }
     : workdir
-    ? `workdir=${encodeURIComponent(workdir)}`
-    : mode
-      ? `mode=${mode}`
-      : "";
+      ? { workdir }
+      : topic
+        ? { topic: topicId!, topicName: topic.name, topicIds: topic.sessionIds }
+        : { mode: mode ?? "recent" };
+  list = listSessionsGrouped(db, sel, Date.now(), tree); // reuse the tree (one build per request)
 
-// Flat jump-index for the ⌘K palette: repos, workdirs, and sessions.
-const paletteItems = [
-  ...tree.repos.map((r) => ({ label: r.displayName, sub: `repo · ${r.sessionCount} sessions`, href: `/?repo=${encodeURIComponent(r.repoId)}`, kind: "repo" })),
-  ...tree.repos.flatMap((r) => r.workdirs.map((w) => ({ label: w.label, sub: `${r.displayName} · workdir`, href: `/?workdir=${encodeURIComponent(w.path)}`, kind: "workdir" }))),
-  ...tree.repos.flatMap((r) => r.workdirs.flatMap((w) => w.sessions.map((s) => ({ label: s.title, sub: `${r.displayName}/${w.label}`, href: `/?session=${s.id}`, kind: "session" })))),
-];
+  // Preserve the current selection when opening a session, so the sidebar + list
+  // stay put instead of resetting to the default view.
+  selParams = repo
+    ? `repo=${encodeURIComponent(repo)}`
+    : topicId !== undefined
+      ? `topic=${topicId}`
+      : workdir
+        ? `workdir=${encodeURIComponent(workdir)}`
+        : mode
+          ? `mode=${mode}`
+          : "";
+
+  // Flat jump-index for the ⌘K palette: repos + workdirs always, sessions capped
+  // to the 300 most-recent so the inlined payload stays bounded on large indexes.
+  const sessionItems = tree.repos.flatMap((r) =>
+    r.workdirs.flatMap((w) =>
+      w.sessions.map((s) => ({
+        label: s.title,
+        sub: `${r.displayName}/${w.label}`,
+        href: `/?session=${s.id}`,
+        kind: "session",
+        _ts: s.lastActivity ?? 0,
+      }))
+    )
+  );
+  sessionItems.sort((a, b) => b._ts - a._ts);
+  paletteItems = [
+    ...tree.repos.map((r) => ({ label: r.displayName, sub: `repo · ${r.sessionCount} sessions`, href: `/?repo=${encodeURIComponent(r.repoId)}`, kind: "repo" })),
+    ...tree.repos.flatMap((r) => r.workdirs.map((w) => ({ label: w.label, sub: `${r.displayName} · workdir`, href: `/?workdir=${encodeURIComponent(w.path)}`, kind: "workdir" }))),
+    ...sessionItems.slice(0, 300).map(({ _ts, ...item }) => item),
+  ];
+} catch (e) {
+  dbError = e instanceof Error ? e.message : String(e);
+}
 ---
 <AppShell title="ccaudit" mobileMain={session ? "reader" : "list"}>
   <Sidebar slot="sidebar" tree={tree} topics={topics} activeRepo={repo} activeWorkdir={workdir} activeTopic={topicId} mode={mode} />
   <SessionListPane slot="list" data={list} activeSession={session} selParams={selParams} />
   <div slot="reader">
-    {session ? <SessionReader sessionId={session} /> : <Dashboard />}
+    {dbError ? <DbErrorPanel message={dbError} /> : session ? <SessionReader sessionId={session} /> : <Dashboard />}
   </div>
   <CommandPalette items={paletteItems} />
 </AppShell>
