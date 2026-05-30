@@ -99,6 +99,15 @@ No AI, no naming beyond the free opener, no cross-session linking, no persistenc
 - **2b — Immediate-pivot detection.** Claude subdivides a long no-gap segment where the topic changed mid-sitting. Annotates only.
 - **2c — Cross-session topic threads.** Cluster 2a's labels across all sessions into topics; a new WHAT-axis in the graph/sidebar linking conversations "from one to another."
 
+  **Feasibility validated (2026-05-30):** one `claude -p` (Haiku) call clustered 293 real session titles into clean, meaningful topics in ~177s for **$0.075** — e.g. *Backend Development (48), ccaudit Session Tool (35), Campaign & Email Outreach (30), Data Ingestion Pipeline (30), Groundwork Learning Platform (16), TrueROI Dashboard (10)* plus a *Miscellaneous (70)* catch-all. Cross-session clustering is practical and high-quality.
+
+  **2c implementation outline (for a fresh session):**
+  - Clustering engine `clusterTopics(items, {run})` — one batched Haiku call; prompt must return topic + **membership** (each session/segment → topic), not just counts, so the graph can draw edges. Cache/pin results; re-cluster on demand only (it's a global, expensive-ish op).
+  - Schema: `topics(id, name, created_at)` + `topic_members(topic_id, session_id [, segment_index])`. Persist; pinned.
+  - `/api/cluster` (or CLI `ccaudit topics`) on-demand global action with a cost/confirm note.
+  - UI: a **Topics** grouping in the sidebar (topic → sessions) and a graph axis (topic nodes linking sessions across repos) — orthogonal to the repo (WHERE) axis. Topic membership is AI/heuristic → marked, user-overridable.
+  - Granularity choice to settle at build time: cluster **sessions** (simpler, proven above) vs **segments** (finer, uses 2a labels, needs all sessions labeled first). Recommend sessions first, segments as a refinement.
+
 Built on the same spine; opt-in; cached.
 
 1. **Segment naming.** One `claude -p` call per session passes the spine + Layer-1 boundaries and asks for a 3–5 word topic label per segment. Cache keyed on session + spine hash; pin results.
