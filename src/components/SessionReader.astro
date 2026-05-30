@@ -18,9 +18,12 @@ const { sessionId } = Astro.props;
 
 const db = getDb();
 const session = getSession(db, sessionId);
-// Only load what we'll render: the tail for huge sessions (raw includes noise,
-// so load generously — visible turns get capped below).
-const RAW_TAIL = 2500;
+// How many recent visible turns to render. Default 500; "Load earlier" raises it via ?show=.
+const showParam = Math.trunc(Number(Astro.url.searchParams.get("show")));
+const SHOW = Number.isFinite(showParam) && showParam > 0 ? Math.min(showParam, 20000) : 500;
+// Only load what we'll render: the tail for huge sessions (raw includes noise, ~6 raw msgs per
+// visible turn). Load all once the requested window would cover the whole session.
+const RAW_TAIL = Math.max(2500, SHOW * 6);
 const tailLoaded = !!session && session.messageCount > RAW_TAIL;
 const messages = !session
   ? []
@@ -39,9 +42,17 @@ const allVisible = classified.filter((c) => c.kind !== "noise");
 
 // Cap rendered turns so a 17k-message session doesn't ship a multi-MB page.
 // Keep the most recent turns (resume-relevant); the title preserves the ask.
-const CAP = 500;
+const CAP = SHOW;
 const truncatedBy = Math.max(0, allVisible.length - CAP);
 const visible = truncatedBy > 0 ? allVisible.slice(allVisible.length - CAP) : allVisible;
+
+// There's earlier history to load if we capped the visible turns OR cut the raw tail.
+const hasEarlier = truncatedBy > 0 || tailLoaded;
+const firstShownLine = visible.length ? visible[0].m.lineNo : null;
+// "Load earlier" preserves the current URL (session/repo/topic) and jumps back to the boundary.
+const earlierUrl = new URL(Astro.url);
+earlierUrl.searchParams.set("show", String(SHOW + 1000));
+const earlierHref = `${earlierUrl.pathname}${earlierUrl.search}${firstShownLine !== null ? `#m${firstShownLine}` : ""}`;
 
 // Map each segment's opening line to the segment so we can drop a divider there.
 const segByStartLine = new Map(segments.map((s) => [s.startLine, s]));
@@ -123,8 +134,11 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
     </header>
 
     <div class="convo" id="convo">
-      {(truncatedBy > 0 || tailLoaded) && (
-        <div class="trunc-note">⤒ Showing the latest {visible.length.toLocaleString()} turns — earlier history is hidden for performance and preserved in the session file.</div>
+      {hasEarlier && (
+        <div class="trunc-note">
+          <span>⤒ Showing the latest {visible.length.toLocaleString()} turns — earlier history is hidden for performance.</span>
+          <a class="load-earlier" href={earlierHref}>⤒ Load 1,000 earlier</a>
+        </div>
       )}
       {blocks.map((b) => (
         b.t === "user" || b.t === "assistant" ? (
@@ -199,17 +213,26 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
   .seg-dot { width:9px; height:9px; border-radius:50%; background:var(--violet); flex:none; }
   .seg-label { font-family:var(--serif); font-size:15px; color:var(--text); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .seg-meta { margin-left:auto; font-size:11px; color:var(--text-faint); font-family:var(--mono); white-space:nowrap; }
-  .seg-nav { position:fixed; right:26px; top:118px; width:200px; max-height:calc(100vh - 150px); overflow-y:auto; background:var(--panel); border:1px solid var(--border-soft); border-radius:10px; padding:8px; font-size:12px; z-index:20; }
-  .seg-nav-head { font-size:10.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--text-faint); padding:4px 6px 6px; }
-  .seg-nav-item { display:flex; align-items:center; gap:7px; padding:5px 6px; border-radius:6px; color:var(--text-dim); text-decoration:none; }
+  /* Collapsed thread index: a slim dot rail pinned to the right edge that expands to full labels
+     on hover (grows leftward over the transcript). Click a thread to scroll the chat there. */
+  .seg-nav { position:fixed; right:26px; top:118px; width:34px; max-height:calc(100vh - 150px); overflow:hidden; background:var(--panel); border:1px solid var(--border-soft); border-radius:10px; padding:8px 6px; font-size:12px; z-index:20; transition:width .18s ease, box-shadow .18s ease, padding .18s ease; }
+  .seg-nav:hover { width:236px; overflow-y:auto; padding:8px; box-shadow:0 14px 40px rgba(0,0,0,.45); }
+  .seg-nav-head { font-size:10.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--text-faint); padding:4px 6px 6px; white-space:nowrap; opacity:0; transition:opacity .12s; }
+  .seg-nav:hover .seg-nav-head { opacity:1; }
+  .seg-nav-item { display:flex; align-items:center; gap:9px; padding:5px 6px; border-radius:6px; color:var(--text-dim); text-decoration:none; }
   .seg-nav-item:hover { background:var(--panel-2); color:var(--text); }
-  .seg-nav-dot { width:6px; height:6px; border-radius:50%; flex:none; background:var(--violet); }
+  .seg-nav-dot { width:8px; height:8px; border-radius:50%; flex:none; background:var(--violet); }
   .seg-nav-dot[data-reason="compact"] { background:var(--c-orange); }
-  .seg-nav-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .seg-nav-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; opacity:0; transition:opacity .12s; }
+  .seg-nav:hover .seg-nav-text { opacity:1; }
   .name-btn { float:right; background:var(--raise); color:var(--amber-bright); border:1px solid var(--border); border-radius:6px; font-size:10.5px; padding:2px 7px; cursor:pointer; }
   .name-btn[disabled] { opacity:.6; cursor:progress; }
-  .trunc-note { background:var(--panel); border:1px dashed var(--border); border-radius:9px; padding:9px 13px; margin-bottom:20px; font-size:12.5px; color:var(--text-faint); max-width:74ch; }
-  .turn { margin-bottom:22px; max-width:74ch; scroll-margin-top:80px; }
+  .trunc-note { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:var(--panel); border:1px dashed var(--border); border-radius:9px; padding:9px 13px; margin-bottom:20px; font-size:12.5px; color:var(--text-faint); max-width:74ch; }
+  .load-earlier { margin-left:auto; background:var(--raise); color:var(--amber-bright); border:1px solid var(--border); border-radius:7px; padding:4px 12px; font-size:12px; text-decoration:none; white-space:nowrap; }
+  .load-earlier:hover { background:var(--panel-2); }
+  /* Anchored jumps (thread nav, deep-links) clear the sticky header. */
+  .seg-divider, .compact-divider { scroll-margin-top:124px; }
+  .turn { margin-bottom:22px; max-width:74ch; scroll-margin-top:124px; }
   .deep-hit { animation: deepHit 2.4s ease-out; border-radius:8px; }
   @keyframes deepHit {
     0%, 30% { box-shadow:0 0 0 2px var(--amber); background:rgba(210,168,95,.12); }
