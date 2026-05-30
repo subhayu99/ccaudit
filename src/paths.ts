@@ -18,7 +18,10 @@ export const LOGS_DIR = join(ccauditHome(), "logs");
 // The encoding has no inverse; this function returns a best-effort heuristic.
 // Callers should treat the result as a display label, not a canonical path.
 export function decodeProjectDir(encoded: string): string {
-  return encoded.replace(/-/g, "/");
+  // The "--" -> "//" quirk (and longer dash runs) yields empty path segments;
+  // collapse any run of slashes back to a single "/" so the display label
+  // never contains "//".
+  return encoded.replace(/-/g, "/").replace(/\/{2,}/g, "/");
 }
 
 // Short label = last two path segments, e.g. "LoopProjects/backend"

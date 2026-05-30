@@ -1,5 +1,6 @@
 ---
 // src/components/SessionReader.astro — warm-obsidian in-shell transcript reader.
+import { existsSync } from "node:fs";
 import { openDb } from "../db/init";
 import { getSession } from "../db/sessions";
 import { getSessionMessages, getSessionMessagesTail } from "../db/messages";
@@ -9,6 +10,7 @@ import { formatTimestamp, truncate, shortSessionId } from "../lib/render";
 import { cleanPromptText } from "../lib/clean-prompt";
 import { segmentSession } from "../lib/segment";
 import { getLabels, spineHash } from "../db/labels";
+import { posixQuote } from "../lib/shell";
 import { INDEX_DB_PATH } from "../paths";
 
 interface Props { sessionId: string; }
@@ -80,8 +82,13 @@ for (const { m, kind } of visible) {
 const title = session
   ? (session.aiTitle ?? (session.firstPrompt ? cleanPromptText(session.firstPrompt) : "") ?? "").trim() || `Session ${shortSessionId(session.id)}`
   : "";
-const resumeCwd = session?.cwd ?? session?.projectDir ?? "";
-const resumeCmd = `cd ${resumeCwd}\nclaude --resume ${sessionId}`;
+// Only `cd` into a real, on-disk cwd. session.projectDir is a lossy decode of
+// the dir-hash and is not a safe filesystem path, so we never shell out to it.
+// POSIX-quote the cwd to prevent shell injection from paths with spaces/quotes.
+const resumeCwd = session?.cwd && existsSync(session.cwd) ? session.cwd : null;
+const resumeCmd = resumeCwd
+  ? `cd ${posixQuote(resumeCwd)}\nclaude --resume ${sessionId}`
+  : `claude --resume ${sessionId}  # original cwd unknown`;
 const noiseCount = classified.length - visible.length;
 
 // minimap landmarks: user turns + compacts
@@ -163,7 +170,7 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
     )}
 
     <dialog id="resume-dialog" class="resume-dialog">
-      <div class="text-[13px] mb-2" style="color:var(--text-dim);">Run this to resume in the original working directory:</div>
+      <div class="text-[13px] mb-2" style="color:var(--text-dim);">{resumeCwd ? "Run this to resume in the original working directory:" : "Original working directory unknown — run this from your project:"}</div>
       <pre class="resume-pre">{resumeCmd}</pre>
       <div class="flex gap-2 mt-3 justify-end">
         <button id="resume-copy" class="resume-secondary">Copy</button>

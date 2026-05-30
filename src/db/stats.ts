@@ -14,11 +14,11 @@ export function getIndexStats(db: Database.Database): IndexStats {
   const row = db
     .prepare(
       `SELECT
-         COUNT(*)                                              AS totalSessions,
-         COALESCE(SUM(message_count), 0)                      AS totalMessages,
-         SUM(CASE WHEN compact_count > 0 THEN 1 ELSE 0 END)  AS sessionsWithCompacts,
-         MIN(started_at)                                       AS oldestSession,
-         MAX(last_activity)                                    AS newestSession
+         COUNT(*)                                                          AS totalSessions,
+         COALESCE(SUM(message_count), 0)                                  AS totalMessages,
+         COALESCE(SUM(CASE WHEN compact_count > 0 THEN 1 ELSE 0 END), 0)  AS sessionsWithCompacts,
+         COALESCE(MIN(started_at), 0)                                      AS oldestSession,
+         COALESCE(MAX(last_activity), 0)                                   AS newestSession
        FROM sessions
       WHERE ${excl.sql}`
     )
