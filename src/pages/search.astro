@@ -106,6 +106,7 @@ const modes = [
             {totalHits} match{totalHits === 1 ? "" : "es"} in {groups.length} session{groups.length === 1 ? "" : "s"} for <strong style="color:var(--text-dim);">"{query}"</strong>
           </p>
           <button id="toggle-all" class="toggle-all" type="button" data-state="open">Collapse all</button>
+          <button id="hide-matching" class="toggle-all hide-matching" type="button" data-q={query} title="Hide every session whose title or your messages match this query">✕ Hide all matching</button>
         </div>
         <div id="results">
           {groups.map((g) => (
@@ -115,6 +116,7 @@ const modes = [
                 <span class="g-title">{g.title}</span>
                 <span class="g-sub">{g.sub}{g.lastActivity ? ` · ${formatTimestamp(g.lastActivity)}` : ""}</span>
                 <span class="g-count">{g.lines.length}</span>
+                <button class="shide" type="button" data-session={g.sessionId} title="Hide this session from all views">✕</button>
               </summary>
               <div class="sgroup-body">
                 {g.lines.map((line) => (
@@ -142,6 +144,25 @@ const modes = [
         tbtn.textContent = collapse ? "Expand all" : "Collapse all";
       });
     }
+
+    // Hiding: a session (id rule) or everything matching the query (phrase rule). Manage in Hidden.
+    async function hide(payload) {
+      await fetch("/api/exclusions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    }
+    document.querySelectorAll(".shide").forEach((b) =>
+      b.addEventListener("click", async (e) => {
+        e.preventDefault(); e.stopPropagation();
+        await hide({ action: "add-rule", kind: "session", value: b.dataset.session });
+        b.closest("details")?.remove();
+      }));
+    const hm = document.getElementById("hide-matching");
+    hm?.addEventListener("click", async () => {
+      const q = hm.dataset.q;
+      if (!q) return;
+      if (!confirm(`Hide every session whose title or your messages contain “${q}”?\nThis saves a reusable rule — undo it anytime in Hidden.`)) return;
+      await hide({ action: "add-rule", kind: "phrase", value: q });
+      location.href = "/search?q=" + encodeURIComponent(q);
+    });
   </script>
 
   <style>
@@ -149,6 +170,10 @@ const modes = [
     .smode[data-on="true"] { background:var(--amber); color:#241f17; font-weight:600; }
     .toggle-all { font-size:12px; padding:4px 11px; border-radius:8px; background:var(--raise); color:var(--text-dim); border:1px solid var(--border); cursor:pointer; }
     .toggle-all:hover { color:var(--text); }
+    .hide-matching:hover { color:#e0a0a0; border-color:rgba(180,60,60,.5); }
+    .shide { margin-left:8px; flex:none; background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:12px; opacity:0; transition:opacity .12s, color .12s; padding:0 2px; }
+    .sgroup-head:hover .shide { opacity:1; }
+    .shide:hover { color:#e0a0a0; }
     /* Per-session collapsible group (native <details>, open by default). */
     .sgroup { background:var(--panel); border:1px solid var(--border-soft); border-radius:12px; margin-bottom:10px; overflow:hidden; }
     .sgroup-head { display:flex; align-items:center; gap:10px; padding:11px 14px; cursor:pointer; list-style:none; user-select:none; }

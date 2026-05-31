@@ -3,7 +3,7 @@ import AppShell from "../layouts/AppShell.astro";
 import Sidebar from "../components/Sidebar.astro";
 import { getDb } from "../db/init";
 import { listProjects } from "../db/sessions";
-import { listExclusions } from "../db/exclusions";
+import { listExclusions, listRules } from "../db/exclusions";
 import { getLibraryTree } from "../db/library";
 import { listTopics } from "../db/topics";
 import { resolveRange } from "../db/date-range";
@@ -15,12 +15,29 @@ const projects = listProjects(db);
 const hidden = listExclusions(db);
 const tree = getLibraryTree(db, range);
 const topics = listTopics(db);
+const rules = listRules(db);
+const ruleLabel = (kind: string) => (kind === "session" ? "session" : kind === "regex" ? "regex" : "phrase");
 ---
 <AppShell title="ccaudit — directories">
   <Sidebar slot="sidebar" tree={tree} topics={topics} />
   <div slot="reader" class="p-8 max-w-[1000px]">
-    <h1 class="font-serif text-2xl font-semibold mb-1" style="color:var(--text);">Directories</h1>
-    <p class="text-[13px] mb-5" style="color:var(--text-dim);">Hide noisy directories from every view. Hiding is lossless — data is kept, just filtered.</p>
+    <h1 class="font-serif text-2xl font-semibold mb-1" style="color:var(--text);">Hidden</h1>
+    <p class="text-[13px] mb-5" style="color:var(--text-dim);">Hide noisy directories or sessions from every view. Hiding is lossless — data is kept, just filtered. Pattern rules also hide future matches.</p>
+
+    {rules.length > 0 && (
+      <div class="rounded-xl mb-6" style="background:var(--panel); border:1px solid var(--border-soft);">
+        <div class="px-4 py-2.5 text-[11px] uppercase tracking-wider" style="color:var(--text-faint); border-bottom:1px solid var(--border-soft);">{rules.length} hide rule{rules.length === 1 ? "" : "s"} <span style="text-transform:none; letter-spacing:0;">· match session title or your messages</span></div>
+        {rules.map((r) => (
+          <div class="flex items-center justify-between gap-3 px-4 py-2.5" style="border-bottom:1px solid var(--border-soft);">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="rule-kind">{ruleLabel(r.kind)}</span>
+              <code class="text-xs font-mono-w break-all" style="color:var(--text-dim);">{r.value}</code>
+            </div>
+            <button data-rule-remove={r.id} class="pbtn shrink-0">Unhide</button>
+          </div>
+        ))}
+      </div>
+    )}
 
     {hidden.length > 0 && (
       <div class="rounded-xl mb-6" style="background:var(--panel); border:1px solid var(--border-soft);">
@@ -70,6 +87,7 @@ const topics = listTopics(db);
     .pbtn-busy { position:relative; color:transparent !important; }
     .pbtn-busy::after { content:""; position:absolute; inset:0; margin:auto; width:11px; height:11px; border-radius:50%; border:1.5px solid var(--text-faint); border-top-color:var(--amber-bright); animation:pbtn-spin .6s linear infinite; }
     @keyframes pbtn-spin { to { transform:rotate(360deg); } }
+    .rule-kind { flex:none; font-size:10px; text-transform:uppercase; letter-spacing:.06em; font-weight:700; padding:1px 7px; border-radius:10px; background:rgba(210,168,95,.16); color:var(--amber-bright); }
   </style>
 
   <script>
@@ -90,6 +108,23 @@ const topics = listTopics(db);
           const res = await fetch("/api/exclusions", {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: el.dataset.excludeAction, prefix: el.dataset.excludePrefix }),
+          });
+          if (res.ok) { location.reload(); }
+          else { excludeInFlight = false; el.disabled = false; el.classList.remove("pbtn-busy"); progressEl?.classList.remove("active"); }
+        } catch { excludeInFlight = false; el.disabled = false; el.classList.remove("pbtn-busy"); progressEl?.classList.remove("active"); }
+      });
+    });
+
+    // Unhide a pattern/session rule.
+    document.querySelectorAll("[data-rule-remove]").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        const el = e.currentTarget as HTMLButtonElement;
+        if (excludeInFlight) return;
+        excludeInFlight = true; el.disabled = true; el.classList.add("pbtn-busy"); progressEl?.classList.add("active");
+        try {
+          const res = await fetch("/api/exclusions", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "remove-rule", id: Number(el.dataset.ruleRemove) }),
           });
           if (res.ok) { location.reload(); }
           else { excludeInFlight = false; el.disabled = false; el.classList.remove("pbtn-busy"); progressEl?.classList.remove("active"); }

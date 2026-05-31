@@ -105,6 +105,17 @@ CREATE TABLE IF NOT EXISTS excluded_prefixes (
   created_at  INTEGER NOT NULL
 );
 
+-- Hide rules beyond directory prefixes: a specific session id, or a phrase/regex matched
+-- against a session's title or its USER messages (assistant replies are never matched).
+-- Evaluated at read time so new matching sessions auto-hide.
+CREATE TABLE IF NOT EXISTS excluded_rules (
+  id         INTEGER PRIMARY KEY,
+  kind       TEXT NOT NULL,   -- 'session' | 'phrase' | 'regex'
+  value      TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE(kind, value)
+);
+
 -- Layer 2a: AI-generated names for a session's segments. One row per session,
 -- pinned to a spine hash so we only re-label when the segmentation changes.
 CREATE TABLE IF NOT EXISTS segment_labels (

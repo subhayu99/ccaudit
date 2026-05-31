@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { listWorkdirs } from "./workdirs.js";
 import { computeRepoComponents } from "../identity/components.js";
-import { listExclusions, sessionKeepCondition } from "./exclusions.js";
+import { listExclusions, sessionKeepCondition, rulesSignature } from "./exclusions.js";
 import { cleanPromptText } from "../lib/clean-prompt.js";
 import { sessionCostUsd, type TokenUsage } from "../lib/pricing.js";
 import { rangeCondition, type DateRange } from "./date-range.js";
@@ -83,7 +83,7 @@ function libraryTreeKey(db: Database.Database): string {
     .prepare("SELECT MAX(indexed_at) AS maxIndexedAt, COUNT(*) AS sessionCount FROM sessions")
     .get() as { maxIndexedAt: number | null; sessionCount: number };
   const exclusionsSig = listExclusions(db).join("");
-  return `${meta.maxIndexedAt ?? ""}|${meta.sessionCount}|${exclusionsSig}`;
+  return `${meta.maxIndexedAt ?? ""}|${meta.sessionCount}|${exclusionsSig}|${rulesSignature(db)}`;
 }
 
 export function getLibraryTree(db: Database.Database, range: DateRange | null = null): LibraryTree {
