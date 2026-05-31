@@ -254,7 +254,7 @@ const graphJson = JSON.stringify(graph);
           .on("end", (event, d) => { if (!event.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
 
       sim = forceSimulation(filtered.nodes)
-        .force("charge", forceManyBody().strength((d) => (ts(d).hub ? -300 : -22)))
+        .force("charge", forceManyBody().strength((d) => (ts(d).hub ? -300 : -22)).distanceMax(420).theta(0.9))
         .force("link", forceLink(curLinks).id((d) => d.id)
           .distance((l) => (l.kind === "session-topic" ? 70 : l.kind === "workdir-repo" || l.kind === "session-repo" ? 55 : 40)).strength(0.5))
         .force("x", forceX(() => width / 2).strength(0.05))
@@ -268,7 +268,7 @@ const graphJson = JSON.stringify(graph);
         sim.on("end", () => fitView(450));
         setTimeout(() => fitView(450), 1500);
       } else {
-        for (let i = 0; i < 300; i++) sim.tick();
+        for (let i = 0; i < 220; i++) sim.tick();
         sim.stop();
         draw();
         fitView(0);
