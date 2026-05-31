@@ -8,7 +8,7 @@
 
 [![license: MIT](https://img.shields.io/badge/license-MIT-d2a85f.svg)](./LICENSE)
 &nbsp;[![node >= 20](https://img.shields.io/badge/node-%3E%3D20-7fae7a.svg)](https://nodejs.org)
-&nbsp;![runs 100% locally](https://img.shields.io/badge/runs-100%25%20locally-cf9152.svg)
+&nbsp;![core runs offline](https://img.shields.io/badge/core-100%25%20offline-cf9152.svg)
 
 <img src="https://raw.githubusercontent.com/subhayu99/ccaudit/main/docs/demo.gif" alt="ccaudit demo" width="100%" />
 
@@ -44,6 +44,7 @@ First run indexes `~/.claude/projects/`; subsequent runs only re-read changed fi
 - **Unified graph view** (Obsidian-style). One force-directed graph of your whole history with a floating **Display** panel to toggle repos / folders / sessions / topics on the fly — hidden layers reconnect through so the graph stays whole. Hover to focus a node and its neighbours, drag, scroll to zoom, click to open. Topics linked from sessions across different repos become cross-cutting connectors.
 - **⌘K command palette.** Live, grouped, collapsible search across every session without leaving the page.
 - **Full-text search** in three modes: smart (FTS5 stemming + ranking), exact substring, and regex — results grouped by session and expandable inline.
+- **Ask your history** *(AI, optional)*. Pose a question and get a cited answer synthesized over your most relevant past sessions. Like topic clustering and session titling, this uses the local `claude` CLI — see [Privacy](#privacy).
 - **Topics.** AI-clustered themes across your sessions, scoped to the active date range, browsable from the sidebar and woven into the graph.
 - **Dashboard.** Total spend, token totals, **averages** ($/session, messages/session, active days), the history span, an activity heatmap, and a tool-usage breakdown.
 - **Cost tracking.** Per-session estimated AI spend pills; sort the list by most recent, highest cost, or most messages.
@@ -81,7 +82,11 @@ Astro 5 SSR (Node standalone) · better-sqlite3 + FTS5 · Tailwind v4 · d3-forc
 
 ## Privacy
 
-Local-only. The index lives at `~/.ccaudit/`. ccaudit reads `~/.claude/projects/` but **never writes to it**, and **never sends anything over the network**. If a git config on disk contains a plaintext token, ccaudit strips it before storing or displaying the remote — but you should still rotate any token found in plaintext.
+**The core is fully local and offline.** Indexing, browsing, search, the graph, the dashboard, and the MCP server never touch the network — the index lives at `~/.ccaudit/`, and ccaudit reads `~/.claude/projects/` **read-only** (it never writes there).
+
+**The optional AI features are the exception.** Session titling (`ccaudit name`), topic clustering, AI thread names, and *Ask your history* shell out to the `claude` CLI on your machine — which sends the relevant session content to Anthropic's API, exactly as Claude Code itself does. They run **only when you explicitly invoke them**; ignore them and ccaudit stays entirely offline.
+
+If a git config on disk contains a plaintext token, ccaudit strips it before storing or displaying the remote — but you should still rotate any token found in plaintext.
 
 ## Development
 
