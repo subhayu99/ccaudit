@@ -5,6 +5,7 @@ import { getDb } from "../db/init";
 import { searchMessages, searchMessagesExact, searchMessagesRegex } from "../db/messages";
 import { getSessionsByIds } from "../db/sessions";
 import { getLibraryTree } from "../db/library";
+import { listTopics } from "../db/topics";
 import { resolveRange } from "../db/date-range";
 import { formatTimestamp } from "../lib/render";
 import type { Session } from "../types";
@@ -21,6 +22,7 @@ let searchError = "";
 const range = resolveRange(Astro.cookies.get("ccaudit-range")?.value, Date.now());
 const db = getDb();
 const tree = getLibraryTree(db, range);
+const topics = listTopics(db);
 if (query) {
   try {
     const raw =
@@ -65,7 +67,7 @@ const modes = [
 ] as const;
 ---
 <AppShell title={query ? `ccaudit — search: ${query}` : "ccaudit — search"}>
-  <Sidebar slot="sidebar" tree={tree} />
+  <Sidebar slot="sidebar" tree={tree} topics={topics} />
   <div slot="reader" class="p-8 max-w-[900px]">
     <h1 class="font-serif text-2xl font-semibold mb-4" style="color:var(--text);">Search</h1>
 

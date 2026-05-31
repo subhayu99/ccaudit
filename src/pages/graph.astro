@@ -5,17 +5,22 @@ import { type GraphData } from "../db/graph";
 import { getHierarchyGraphData } from "../db/hierarchy-graph";
 import { getDb } from "../db/init";
 import { getLibraryTree, type LibraryTree } from "../db/library";
+import { listTopics, type TopicSummary } from "../db/topics";
+import { resolveRange } from "../db/date-range";
 
 // One unified graph: the full repo → folder → session → topic dataset. All filtering
 // (which node types are shown) happens client-side via the floating control panel — no tabs.
+const range = resolveRange(Astro.cookies.get("ccaudit-range")?.value, Date.now());
 let dbError = "";
 let graph: GraphData = { nodes: [], links: [] };
 let tree: LibraryTree = { repos: [], totalCount: 0 };
+let topics: TopicSummary[] = [];
 
 const db = getDb();
 try {
-  graph = getHierarchyGraphData(db, { includeTopics: true });
-  tree = getLibraryTree(db);
+  graph = getHierarchyGraphData(db, { includeTopics: true, range });
+  tree = getLibraryTree(db, range);
+  topics = listTopics(db);
 } catch (e) {
   dbError = e instanceof Error ? e.message : String(e);
 }
@@ -35,7 +40,7 @@ const types = [
 const graphJson = JSON.stringify(graph);
 ---
 <AppShell title="ccaudit — graph">
-  <Sidebar slot="sidebar" tree={tree} />
+  <Sidebar slot="sidebar" tree={tree} topics={topics} />
   <div slot="reader" class="flex flex-col h-screen p-5">
   {dbError && (
     <div class="rounded-lg p-3 mb-3 text-sm" style="background:rgba(180,60,60,.12); border:1px solid rgba(180,60,60,.4); color:#e0a0a0;">

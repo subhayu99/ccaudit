@@ -3,6 +3,7 @@ import type { GraphData, GraphNode, GraphLink } from "./graph.js";
 import { listWorkdirs } from "./workdirs.js";
 import { computeRepoComponents } from "../identity/components.js";
 import { sessionKeepCondition } from "./exclusions.js";
+import { rangeCondition, type DateRange } from "./date-range.js";
 
 type SessionRow = {
   id: string;
@@ -31,12 +32,13 @@ function basename(p: string): string {
  *   carries its exact `cwd` so the resume command targets the right worktree.
  * - Sessions without a recorded cwd are omitted (they cannot be placed).
  */
-export function getRepoGraphData(db: Database.Database): GraphData {
+export function getRepoGraphData(db: Database.Database, range: DateRange | null = null): GraphData {
   const workdirs = listWorkdirs(db);
   const { repos, repoByPath } = computeRepoComponents(workdirs);
   const existsByPath = new Map(workdirs.map((w) => [w.path, w.existsOnDisk]));
 
   const excl = sessionKeepCondition(db);
+  const rg = rangeCondition(range, "last_activity");
   const sessions = db
     .prepare(
       `SELECT id,
@@ -47,9 +49,9 @@ export function getRepoGraphData(db: Database.Database): GraphData {
               first_prompt  AS firstPrompt,
               ai_title      AS aiTitle
          FROM sessions
-        WHERE cwd IS NOT NULL AND ${excl.sql}`
+        WHERE cwd IS NOT NULL AND ${excl.sql} AND ${rg.sql}`
     )
-    .all(excl.params) as SessionRow[];
+    .all({ ...excl.params, ...rg.params }) as SessionRow[];
 
   const nodes: GraphNode[] = [];
   const links: GraphLink[] = [];

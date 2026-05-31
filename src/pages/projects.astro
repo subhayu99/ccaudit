@@ -5,15 +5,19 @@ import { getDb } from "../db/init";
 import { listProjects } from "../db/sessions";
 import { listExclusions } from "../db/exclusions";
 import { getLibraryTree } from "../db/library";
+import { listTopics } from "../db/topics";
+import { resolveRange } from "../db/date-range";
 import { formatTimestamp } from "../lib/render";
 
+const range = resolveRange(Astro.cookies.get("ccaudit-range")?.value, Date.now());
 const db = getDb();
 const projects = listProjects(db);
 const hidden = listExclusions(db);
-const tree = getLibraryTree(db);
+const tree = getLibraryTree(db, range);
+const topics = listTopics(db);
 ---
 <AppShell title="ccaudit — directories">
-  <Sidebar slot="sidebar" tree={tree} />
+  <Sidebar slot="sidebar" tree={tree} topics={topics} />
   <div slot="reader" class="p-8 max-w-[1000px]">
     <h1 class="font-serif text-2xl font-semibold mb-1" style="color:var(--text);">Directories</h1>
     <p class="text-[13px] mb-5" style="color:var(--text-dim);">Hide noisy directories from every view. Hiding is lossless — data is kept, just filtered.</p>

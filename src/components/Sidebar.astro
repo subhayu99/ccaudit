@@ -58,7 +58,7 @@ const activeRange = RANGES.some((r) => r.key === rangeToken) ? rangeToken : "cus
 
     <div class="text-[10.5px] tracking-wider uppercase px-2.5 pt-3.5 pb-1.5 font-semibold" style="color:var(--text-faint);">Repositories</div>
     {tree.repos.map((repo) => (
-      <div class="repo-group" data-open={repo.repoId === activeRepo}>
+      <div class="repo-group" data-repo={repo.repoId} data-open={repo.repoId === activeRepo}>
         <a href={`/?repo=${encodeURIComponent(repo.repoId)}`} class="lib-item" data-active={repo.repoId === activeRepo}>
           <button class="caret" aria-label="toggle">›</button>
           <span class="w-2 h-2 rounded-full inline-block" style="background:var(--c-green);"></span>
@@ -134,12 +134,22 @@ const activeRange = RANGES.some((r) => r.key === rangeToken) ? rangeToken : "cus
 </style>
 
 <script>
-  // Collapse/expand without navigating when the caret is clicked.
+  // Repo expand/collapse — persisted across navigation (full page reloads) in localStorage,
+  // so opening a repo and clicking into one of its sessions keeps the repo open.
+  const OPEN_KEY = "ccaudit-open-repos";
+  const openSet = new Set<string>((() => { try { return JSON.parse(localStorage.getItem(OPEN_KEY) || "[]"); } catch { return []; } })());
+  // Restore on load (the active repo is already open server-side; merge the rest).
+  document.querySelectorAll<HTMLElement>(".repo-group").forEach((g) => {
+    if (g.dataset.repo && openSet.has(g.dataset.repo)) g.dataset.open = "true";
+  });
   document.querySelectorAll(".caret").forEach((c) => {
     c.addEventListener("click", (e) => {
       e.preventDefault(); e.stopPropagation();
       const group = (e.currentTarget as HTMLElement).closest(".repo-group") as HTMLElement;
-      group.dataset.open = group.dataset.open === "true" ? "false" : "true";
+      const open = group.dataset.open !== "true";
+      group.dataset.open = open ? "true" : "false";
+      const id = group.dataset.repo;
+      if (id) { open ? openSet.add(id) : openSet.delete(id); try { localStorage.setItem(OPEN_KEY, JSON.stringify([...openSet])); } catch {} }
     });
   });
 

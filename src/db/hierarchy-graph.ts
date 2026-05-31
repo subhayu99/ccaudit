@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import type { GraphData } from "./graph.js";
 import { getRepoGraphData } from "./repo-graph.js";
 import { listTopics } from "./topics.js";
+import type { DateRange } from "./date-range.js";
 
 /**
  * The "ingrained" hierarchy view: repo ──▶ workdir(folder) ──▶ session, optionally with
@@ -9,8 +10,8 @@ import { listTopics } from "./topics.js";
  * linked from sessions across different repos/folders becomes a cross-cutting connector — which is
  * the "interconnected topics" view. Reuses getRepoGraphData (shared `sess:<id>` node ids).
  */
-export function getHierarchyGraphData(db: Database.Database, opts: { includeTopics?: boolean } = {}): GraphData {
-  const base = getRepoGraphData(db);
+export function getHierarchyGraphData(db: Database.Database, opts: { includeTopics?: boolean; range?: DateRange | null } = {}): GraphData {
+  const base = getRepoGraphData(db, opts.range ?? null);
   if (!opts.includeTopics) return base;
 
   const sessionNodeIds = new Set(base.nodes.filter((n) => n.type === "session").map((n) => n.id)); // "sess:<id>"

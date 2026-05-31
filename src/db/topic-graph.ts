@@ -2,15 +2,16 @@ import type Database from "better-sqlite3";
 import type { GraphData, GraphNode, GraphLink } from "./graph.js";
 import { listTopics } from "./topics.js";
 import { getLibraryTree } from "./library.js";
+import type { DateRange } from "./date-range.js";
 
 /**
  * Force-graph pivoted on TOPIC (the WHAT axis): topic ──▶ session.
  * Topic nodes sized by member count; sessions carry their title for hover/open.
  * Honors exclusions (sessions come from the visible library tree).
  */
-export function getTopicGraphData(db: Database.Database): GraphData {
+export function getTopicGraphData(db: Database.Database, range: DateRange | null = null): GraphData {
   const topics = listTopics(db);
-  const tree = getLibraryTree(db);
+  const tree = getLibraryTree(db, range);
   // visible session id -> {title, msgCount, compactCount, cwd, lastActivity}
   const sessions = new Map(
     tree.repos.flatMap((r) => r.workdirs.flatMap((w) => w.sessions.map((s) => [s.id, s] as const)))
