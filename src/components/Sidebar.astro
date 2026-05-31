@@ -7,8 +7,17 @@ interface Props { tree: LibraryTree; topics?: TopicSummary[]; activeRepo?: strin
 const { tree, topics = [], activeRepo, activeWorkdir, activeTopic, mode } = Astro.props;
 // Global date-range filter (persisted in the ccaudit-range cookie). Scopes list/search/ask.
 const rangeToken = Astro.cookies.get("ccaudit-range")?.value ?? "all";
-const RANGES = [{ key: "all", label: "All" }, { key: "7d", label: "7d" }, { key: "30d", label: "30d" }, { key: "90d", label: "90d" }];
-const activeRange = RANGES.some((r) => r.key === rangeToken) ? rangeToken : "custom";
+const RANGES = [{ key: "all", label: "All" }, { key: "7d", label: "7d" }, { key: "30d", label: "30d" }, { key: "custom", label: "Custom" }];
+const isCustom = rangeToken.startsWith("custom:");
+const activeRange = RANGES.some((r) => r.key === rangeToken) ? rangeToken : isCustom ? "custom" : "all";
+// Pre-fill the custom date inputs (YYYY-MM-DD) when a custom range is active.
+const isoDay = (ms: string) => {
+  const d = new Date(Number(ms));
+  return Number.isNaN(d.getTime()) ? "" : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+const [, cf = "", ct = ""] = isCustom ? rangeToken.split(":") : [];
+const customFrom = isCustom ? isoDay(cf) : "";
+const customTo = isCustom ? isoDay(ct) : "";
 ---
 <div id="topbar-progress" aria-hidden="true"></div>
 <div class="flex flex-col h-full" style="color:var(--text-dim);">
@@ -29,6 +38,11 @@ const activeRange = RANGES.some((r) => r.key === rangeToken) ? rangeToken : "cus
     </div>
     <div class="range-row" id="range-ctl">
       {RANGES.map((r) => <button type="button" class="rbtn" data-range={r.key} data-on={activeRange === r.key}>{r.label}</button>)}
+    </div>
+    <div id="range-custom" class="range-custom" hidden={activeRange !== "custom"}>
+      <label class="rc-lbl">From<input type="date" id="rc-from" value={customFrom} /></label>
+      <label class="rc-lbl">To<input type="date" id="rc-to" value={customTo} /></label>
+      <button type="button" id="rc-apply" class="rc-apply">Apply range</button>
     </div>
   </div>
   <nav class="px-2 overflow-y-auto flex-1">
@@ -94,12 +108,26 @@ const activeRange = RANGES.some((r) => r.key === rangeToken) ? rangeToken : "cus
   });
 
   // Global date-range filter: persist in a cookie the server reads, then reload in place.
+  const setRange = (v: string) => {
+    document.cookie = `ccaudit-range=${v}; path=/; max-age=31536000; samesite=lax`;
+    location.reload();
+  };
+  const customPanel = document.getElementById("range-custom");
   document.querySelectorAll("#range-ctl .rbtn").forEach((b) =>
     b.addEventListener("click", () => {
       const v = (b as HTMLElement).dataset.range || "all";
-      document.cookie = `ccaudit-range=${v}; path=/; max-age=31536000; samesite=lax`;
-      location.reload();
+      if (v === "custom") { customPanel?.toggleAttribute("hidden"); return; } // reveal the date pickers
+      setRange(v);
     }));
+  document.getElementById("rc-apply")?.addEventListener("click", () => {
+    const from = (document.getElementById("rc-from") as HTMLInputElement)?.value;
+    const to = (document.getElementById("rc-to") as HTMLInputElement)?.value;
+    if (!from || !to) return;
+    const fromMs = new Date(from + "T00:00:00").getTime();
+    const toMs = new Date(to + "T23:59:59.999").getTime();
+    if (Number.isNaN(fromMs) || Number.isNaN(toMs) || toMs < fromMs) return;
+    setRange(`custom:${fromMs}:${toMs}`);
+  });
 </script>
 
 <style>
@@ -107,6 +135,12 @@ const activeRange = RANGES.some((r) => r.key === rangeToken) ? rangeToken : "cus
   .rbtn { flex:1; font-size:11.5px; padding:3px 0; text-align:center; border-radius:7px; background:var(--canvas); border:1px solid var(--border); color:var(--text-dim); cursor:pointer; }
   .rbtn:hover { color:var(--text); }
   .rbtn[data-on="true"] { background:var(--amber); color:#241f17; border-color:var(--amber); font-weight:600; }
+  .range-custom { display:flex; flex-direction:column; gap:6px; margin-top:6px; }
+  .range-custom[hidden] { display:none; }
+  .rc-lbl { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:11px; color:var(--text-faint); }
+  .rc-lbl input { flex:1; background:var(--canvas); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:11.5px; padding:2px 6px; color-scheme:light dark; }
+  .rc-apply { font-size:11.5px; padding:4px 0; border-radius:7px; background:var(--raise); color:var(--text); border:1px solid var(--border); cursor:pointer; }
+  .rc-apply:hover { background:var(--amber); color:#241f17; border-color:var(--amber); }
   .lib-item { display:flex; align-items:center; gap:9px; padding:6px 10px; border-radius:7px; cursor:pointer; white-space:nowrap; font-size:14px; color:var(--text-dim); text-decoration:none; }
   .lib-item:hover { background:var(--panel-2); color:var(--text); }
   .lib-item[data-active="true"] { background:var(--raise); color:var(--text); }
