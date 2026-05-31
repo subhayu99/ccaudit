@@ -24,7 +24,7 @@
     "developer-tools"
   ],
   "bin": {
-    "ccaudit": "./dist/index.js"
+    "ccaudit": "dist/index.js"
   },
   "files": [
     "dist/",
