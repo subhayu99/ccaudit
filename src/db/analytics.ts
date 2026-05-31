@@ -35,6 +35,23 @@ export function getSpend(db: Database.Database): Spend {
   };
 }
 
+export type HistorySpan = { firstActivity: number | null; lastActivity: number | null; activeDays: number };
+
+/** First/last session activity (epoch ms) and the count of distinct local calendar days
+ *  with any activity — the "how long & how often" framing for the dashboard. */
+export function getHistorySpan(db: Database.Database): HistorySpan {
+  const row = db
+    .prepare(
+      `SELECT MIN(last_activity) AS first,
+              MAX(last_activity) AS last,
+              COUNT(DISTINCT date(last_activity/1000, 'unixepoch', 'localtime')) AS days
+         FROM sessions
+        WHERE last_activity IS NOT NULL`
+    )
+    .get() as { first: number | null; last: number | null; days: number };
+  return { firstActivity: row.first, lastActivity: row.last, activeDays: row.days };
+}
+
 export type DayActivity = {
   day: string; // "YYYY-MM-DD"
   sessions: number;

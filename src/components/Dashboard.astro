@@ -2,7 +2,7 @@
 // src/components/Dashboard.astro — warm empty-state shown when no session is selected.
 import { getDb } from "../db/init";
 import { getIndexStats } from "../db/stats";
-import { getActivityByDay, getToolUsage, getSpend } from "../db/analytics";
+import { getActivityByDay, getToolUsage, getSpend, getHistorySpan } from "../db/analytics";
 import { formatUsd } from "../lib/pricing";
 import { CLAUDE_PROJECTS_DIR } from "../paths";
 
@@ -11,6 +11,15 @@ const stats = getIndexStats(db);
 const isEmpty = stats.totalSessions === 0;
 const spend = getSpend(db);
 const fmtTok = (n: number) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n));
+
+// Averages & span
+const span = getHistorySpan(db);
+const avgCost = stats.totalSessions ? spend.totalCostUsd / stats.totalSessions : 0;
+const avgMsgs = stats.totalSessions ? Math.round(stats.totalMessages / stats.totalSessions) : 0;
+const fmtDate = (ms: number) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+const spanText = span.firstActivity && span.lastActivity
+  ? `${fmtDate(span.firstActivity)} → ${fmtDate(span.lastActivity)} · ${span.activeDays} active day${span.activeDays === 1 ? "" : "s"}`
+  : "";
 const spendMax = Math.max(1, ...spend.byModel.map((m) => m.costUsd));
 const activity = getActivityByDay(db);
 const tools = getToolUsage(db).slice(0, 12);
@@ -51,14 +60,18 @@ const totalTools = tools.reduce((s, t) => s + t.count, 0);
 ) : (
 <div class="p-8 max-w-[860px]">
   <h2 class="font-serif text-[26px] font-semibold mb-1" style="color:var(--text);">Your Claude history</h2>
-  <p class="text-[14px] mb-6" style="color:var(--text-dim);">Pick a repository or session on the left, or press <kbd class="font-mono-w" style="background:var(--raise);border:1px solid var(--border);border-radius:5px;padding:1px 6px;font-size:11px;">⌘K</kbd> to jump anywhere.</p>
+  <p class="text-[14px] mb-1" style="color:var(--text-dim);">Pick a repository or session on the left, or press <kbd class="font-mono-w" style="background:var(--raise);border:1px solid var(--border);border-radius:5px;padding:1px 6px;font-size:11px;">⌘K</kbd> to jump anywhere.</p>
+  {spanText && <p class="text-[12.5px] mb-6 font-mono-w" style="color:var(--text-faint);">{spanText}</p>}
 
   <div class="flex gap-3 flex-wrap mb-8">
     {[["sessions", stats.totalSessions.toLocaleString(), "var(--text)"],
       ["messages", stats.totalMessages.toLocaleString(), "var(--text)"],
       ["with compacts", String(stats.sessionsWithCompacts), "var(--c-orange)"],
       ["tokens", fmtTok(spend.totalTokens), "var(--text)"],
-      ["est. AI spend", formatUsd(spend.totalCostUsd), "var(--amber-bright)"]].map(([label, val, color]) => (
+      ["est. AI spend", formatUsd(spend.totalCostUsd), "var(--amber-bright)"],
+      ["avg $ / session", formatUsd(avgCost), "var(--amber-bright)"],
+      ["msgs / session", avgMsgs.toLocaleString(), "var(--text)"],
+      ["active days", String(span.activeDays), "var(--c-green)"]].map(([label, val, color]) => (
       <div class="rounded-xl px-5 py-4" style="background:var(--panel); border:1px solid var(--border-soft);">
         <div class="font-serif text-[28px]" style={`color:${color};`}>{val}</div>
         <div class="text-[12px] uppercase tracking-wider" style="color:var(--text-faint);">{label}</div>
