@@ -21,7 +21,7 @@ const { tree, topics = [], activeRepo, activeWorkdir, activeTopic, mode } = Astr
     <div class="text-[10.5px] tracking-wider uppercase px-2.5 pt-3 pb-1.5 font-semibold" style="color:var(--text-faint);">Library</div>
     <a href="/?mode=recent" class="lib-item" data-active={mode === "recent"}>◷ Recent</a>
     <a href="/?mode=all" class="lib-item" data-active={mode === "all"}>✦ All sessions <span class="ml-auto text-[11px]">{tree.totalCount}</span></a>
-    <a href="/graph?view=repos" class="lib-item">⌗ Graph view</a>
+    <a href="/graph" class="lib-item">⌗ Graph view</a>
     <a href="/ask" class="lib-item">◈ Ask history</a>
 
     <div class="flex items-center px-2.5 pt-3.5 pb-1.5">

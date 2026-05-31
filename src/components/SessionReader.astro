@@ -48,7 +48,7 @@ const visible = truncatedBy > 0 ? allVisible.slice(allVisible.length - CAP) : al
 
 // There's earlier history to load if we capped the visible turns OR cut the raw tail.
 const hasEarlier = truncatedBy > 0 || tailLoaded;
-const firstShownLine = visible.length ? visible[0].m.lineNo : null;
+const firstShownLine = visible.length ? visible[0]!.m.lineNo : null;
 // "Load earlier" preserves the current URL (session/repo/topic) and jumps back to the boundary.
 const earlierUrl = new URL(Astro.url);
 earlierUrl.searchParams.set("show", String(SHOW + 1000));
