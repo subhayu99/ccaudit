@@ -243,7 +243,10 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
   .role.assistant { color:var(--violet); }
   .bubble { border-radius:12px; padding:14px 16px; font-size:14px; line-height:1.6; color:#ddd6c6; background:var(--panel); border:1px solid var(--border-soft); }
   .turn.user .bubble { background:var(--panel-2); border-color:var(--border); }
-  .toolchip { display:inline-flex; align-items:center; gap:7px; background:var(--canvas); border:1px solid var(--border-soft); border-radius:8px; padding:6px 11px; font-family:var(--mono); font-size:12px; color:var(--text-dim); margin:0 0 14px; max-width:74ch; overflow:hidden; }
+  /* Block-level (one per row, left-aligned). inline-flex made consecutive chips flow inline
+     and wrap left/right — the "scattered" look. */
+  .toolchip { display:flex; width:fit-content; align-items:flex-start; gap:7px; background:var(--canvas); border:1px solid var(--border-soft); border-radius:8px; padding:6px 11px; font-family:var(--mono); font-size:12px; color:var(--text-dim); margin:0 0 8px; max-width:74ch; overflow:hidden; }
+  .toolchip span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .toolchip .tn { color:var(--c-green); }
   .toolchip.result { color:var(--text-faint); }
   .compact-divider { display:flex; align-items:center; gap:10px; margin:18px 0 22px; color:var(--c-orange); font-size:12px; font-family:var(--mono); }
@@ -329,17 +332,28 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
   (function () {
     const scroller = document.querySelector(".shell-reader");
     const hash = location.hash;
-    const target = /^#m\d+$/.test(hash) ? document.getElementById(hash.slice(1)) : null;
+    const wantsLine = /^#m\d+$/.test(hash) ? parseInt(hash.slice(2), 10) : null;
+    let target = wantsLine !== null ? document.getElementById(hash.slice(1)) : null;
+    // Load-earlier anchors at the old first line, which may be a tool/compact row with no id.
+    // Fall back to the nearest rendered turn at/after that line — NOT the bottom.
+    if (!target && wantsLine !== null) {
+      const cands = [...document.querySelectorAll('[id]')]
+        .map((e) => ({ e, n: /^m\d+$/.test(e.id) ? parseInt(e.id.slice(1), 10) : NaN }))
+        .filter((x) => Number.isFinite(x.n) && x.n >= wantsLine)
+        .sort((a, b) => a.n - b.n);
+      target = cands.length ? cands[0].e : null;
+    }
     const toBottom = () => { if (scroller) scroller.scrollTop = scroller.scrollHeight; };
     requestAnimationFrame(() => {
       if (target) {
         target.scrollIntoView({ block: "center" });
         target.classList.add("deep-hit");
         setTimeout(() => target.classList.remove("deep-hit"), 2400);
+      } else if (wantsLine !== null) {
+        if (scroller) scroller.scrollTop = 0; // anchored intent but nothing matched — show earliest, never bottom
       } else {
         toBottom();
-        // Re-pin after late layout shifts (web-font swap, etc.).
-        setTimeout(toBottom, 60);
+        setTimeout(toBottom, 60); // re-pin after late layout shifts (web-font swap, etc.)
       }
     });
   })();
