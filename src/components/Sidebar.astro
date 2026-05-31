@@ -22,16 +22,17 @@ const customTo = isCustom ? isoDay(ct) : "";
 <div id="topbar-progress" aria-hidden="true"></div>
 <div class="flex flex-col h-full" style="color:var(--text-dim);">
   <div class="flex items-center gap-2 px-4 pt-4 pb-3">
-    <div class="w-[22px] h-[22px] rounded-md grid place-items-center font-bold text-[13px]"
+    <div class="w-[22px] h-[22px] rounded-md grid place-items-center font-bold text-[13px] shrink-0"
          style="background:linear-gradient(135deg,var(--amber),var(--c-orange)); color:#241f17;">c</div>
-    <h1 class="font-serif text-[18px] font-semibold" style="color:var(--text);">ccaudit</h1>
+    <h1 class="font-serif text-[18px] font-semibold brand-name rail-hide" style="color:var(--text);">ccaudit</h1>
+    <button id="rail-toggle" class="rail-toggle ml-auto" title="Collapse sidebar to icons" aria-label="Collapse sidebar">«</button>
   </div>
   <a href="/search" data-open-cmdk class="mx-3 mb-3 flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px]"
      style="background:var(--canvas); border:1px solid var(--border); color:var(--text-faint); text-decoration:none; cursor:pointer;">
-    <span>⚲</span><span>Search history…</span>
-    <span class="ml-auto font-mono-w text-[11px] px-1.5 rounded" style="background:var(--raise); border:1px solid var(--border);">⌘K</span>
+    <span class="ico">⚲</span><span class="rail-hide">Search history…</span>
+    <span class="ml-auto font-mono-w text-[11px] px-1.5 rounded rail-hide" style="background:var(--raise); border:1px solid var(--border);">⌘K</span>
   </a>
-  <div class="px-3 mb-2">
+  <div class="px-3 mb-2 rail-hide">
     <div class="flex items-center mb-1">
       <span class="text-[10px] tracking-wider uppercase font-semibold" style="color:var(--text-faint);">Date range</span>
       {activeRange === "custom" && <span class="ml-auto text-[10.5px] font-mono-w" style="color:var(--amber-bright);">{rangeLabel(rangeToken)}</span>}
@@ -46,12 +47,13 @@ const customTo = isCustom ? isoDay(ct) : "";
     </div>
   </div>
   <nav class="px-2 overflow-y-auto flex-1">
-    <div class="text-[10.5px] tracking-wider uppercase px-2.5 pt-3 pb-1.5 font-semibold" style="color:var(--text-faint);">Library</div>
-    <a href="/?mode=recent" class="lib-item" data-active={mode === "recent"}>◷ Recent</a>
-    <a href="/?mode=all" class="lib-item" data-active={mode === "all"}>✦ All sessions <span class="ml-auto text-[11px]">{tree.totalCount}</span></a>
-    <a href="/graph" class="lib-item">⌗ Graph view</a>
-    <a href="/ask" class="lib-item">◈ Ask history</a>
+    <div class="text-[10.5px] tracking-wider uppercase px-2.5 pt-3 pb-1.5 font-semibold rail-hide" style="color:var(--text-faint);">Library</div>
+    <a href="/?mode=recent" class="lib-item" data-active={mode === "recent"} title="Recent"><span class="ico">◷</span><span class="lbl-t">Recent</span></a>
+    <a href="/?mode=all" class="lib-item" data-active={mode === "all"} title="All sessions"><span class="ico">≡</span><span class="lbl-t">All sessions</span> <span class="ml-auto text-[11px] rail-hide">{tree.totalCount}</span></a>
+    <a href="/graph" class="lib-item" title="Graph view"><span class="ico">⌗</span><span class="lbl-t">Graph view</span></a>
+    <a href="/ask" class="lib-item" title="Ask history"><span class="ico">✦</span><span class="lbl-t">Ask history</span></a>
 
+    <div class="rail-hide">
     <div class="flex items-center px-2.5 pt-3.5 pb-1.5">
       <span class="text-[10.5px] tracking-wider uppercase font-semibold" style="color:var(--text-faint);">Topics</span>
       <button id="cluster-topics" class="ml-auto" style="background:none;border:none;color:var(--amber-bright);cursor:pointer;font-size:10.5px;" title="Cluster new (unclustered) sessions into topics with AI"><span class="cluster-spinner" aria-hidden="true"></span><span class="cluster-label">✨ {topics.length ? "Cluster new" : "Cluster"}</span></button>
@@ -93,8 +95,9 @@ const customTo = isCustom ? isoDay(ct) : "";
         </div>
       </div>
     ))}
+    </div>
   </nav>
-  <div class="flex items-center gap-3 px-4 py-2.5 text-[12.5px]" style="border-top:1px solid var(--border-soft); color:var(--text-dim);">
+  <div class="flex items-center gap-3 px-4 py-2.5 text-[12.5px] rail-hide" style="border-top:1px solid var(--border-soft); color:var(--text-dim);">
     <a href="/projects" style="color:var(--text-dim); text-decoration:none;" title="Manage hidden directories">⌫ Hidden</a>
     <button id="theme-toggle" class="ml-auto" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:12.5px;" title="Toggle theme">☾ Theme</button>
   </div>
@@ -141,6 +144,15 @@ const customTo = isCustom ? isoDay(ct) : "";
   .rc-lbl input { flex:1; background:var(--canvas); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:11.5px; padding:2px 6px; color-scheme:light dark; }
   .rc-apply { font-size:11.5px; padding:4px 0; border-radius:7px; background:var(--raise); color:var(--text); border:1px solid var(--border); cursor:pointer; }
   .rc-apply:hover { background:var(--amber); color:#241f17; border-color:var(--amber); }
+  /* Icon rail (html.nav-rail): hide labels/sections, center the glyphs. */
+  .rail-toggle { background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:14px; line-height:1; padding:2px 5px; border-radius:6px; }
+  .rail-toggle:hover { color:var(--text); background:var(--panel-2); }
+  .lib-item .ico { width:18px; text-align:center; flex:none; }
+  :global(html.nav-rail) .rail-hide, :global(html.nav-rail) .lbl-t { display:none !important; }
+  :global(html.nav-rail) .lib-item { justify-content:center; gap:0; padding:9px 0; }
+  :global(html.nav-rail) .lib-item .ico { width:auto; font-size:16px; }
+  :global(html.nav-rail) [data-open-cmdk] { justify-content:center; }
+  :global(html.nav-rail) .rail-toggle { margin:0 auto; }
   .lib-item { display:flex; align-items:center; gap:9px; padding:6px 10px; border-radius:7px; cursor:pointer; white-space:nowrap; font-size:14px; color:var(--text-dim); text-decoration:none; }
   .lib-item:hover { background:var(--panel-2); color:var(--text); }
   .lib-item[data-active="true"] { background:var(--raise); color:var(--text); }

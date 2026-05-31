@@ -7,7 +7,9 @@ import "../styles/global.css";
 interface Props { title?: string; mobileMain?: "list" | "reader"; }
 const { title = "ccaudit", mobileMain = "list" } = Astro.props;
 const hasList = Astro.slots.has("list");
-const cols = hasList ? "264px 372px 1fr" : "264px 1fr";
+// Column widths come from CSS vars so the collapse toggles (html.nav-rail / html.list-collapsed)
+// can shrink the sidebar to an icon rail and hide the list, giving the reader the width.
+const cols = hasList ? "var(--cs,264px) var(--cl,372px) 1fr" : "var(--cs,264px) 1fr";
 const mobileFocus = hasList ? mobileMain : "reader";
 ---
 <html lang="en" class="theme-dark">
@@ -19,6 +21,9 @@ const mobileFocus = hasList ? mobileMain : "reader";
       try {
         const t = localStorage.getItem("ccaudit-theme");
         document.documentElement.classList.toggle("theme-light", t === "light");
+        // Apply persisted panel-collapse state before paint (no flash).
+        document.documentElement.classList.toggle("nav-rail", localStorage.getItem("ccaudit-nav-rail") === "1");
+        document.documentElement.classList.toggle("list-collapsed", localStorage.getItem("ccaudit-list-collapsed") === "1");
       } catch {}
     </script>
   </head>
@@ -41,6 +46,7 @@ const mobileFocus = hasList ? mobileMain : "reader";
         <slot name="reader" />
       </main>
     </div>
+    {hasList && <button id="list-toggle" class="list-toggle" aria-label="Show or hide the session list" title="Show/hide the session list"></button>}
     <slot />
 
     <style>
@@ -48,6 +54,17 @@ const mobileFocus = hasList ? mobileMain : "reader";
       .shell-sidebar { overflow-y:auto; }
       .shell-list { overflow:hidden; display:flex; flex-direction:column; }
       .shell-reader { overflow-y:auto; }
+      /* Collapse states (persisted on <html>). */
+      html.nav-rail { --cs:56px; }
+      html.list-collapsed { --cl:0px; }
+      html.list-collapsed .shell-list { display:none; }
+      /* Handle that sits on the list↔reader divider; collapses/expands the list. */
+      .list-toggle { position:fixed; top:9px; left:calc(var(--cs,264px) + var(--cl,372px) - 12px); z-index:25;
+        width:24px; height:24px; border-radius:7px; background:var(--panel); border:1px solid var(--border);
+        color:var(--text-dim); cursor:pointer; font-size:12px; line-height:1; transition:left .16s ease, color .12s; }
+      .list-toggle:hover { color:var(--text); background:var(--panel-2); }
+      .list-toggle::before { content:"⇤"; }
+      html.list-collapsed .list-toggle::before { content:"⇥"; }
       .mobile-bar { display:none; align-items:center; gap:12px; height:52px; padding:0 14px; border-bottom:1px solid var(--border-soft); background:var(--panel); position:sticky; top:0; z-index:30; }
       .hamburger { background:none; border:none; color:var(--text); font-size:20px; cursor:pointer; line-height:1; padding:4px 6px; }
       .drawer-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:35; }
@@ -61,6 +78,8 @@ const mobileFocus = hasList ? mobileMain : "reader";
         .shell-grid[data-mobile="list"] .shell-reader { display:none; }
         .shell-grid[data-mobile="reader"] .shell-list { display:none; }
         .shell-list, .shell-reader { border-right:none !important; }
+        .list-toggle { display:none; }
+        html.nav-rail { --cs:264px; } /* rail is a desktop affordance; full sidebar on mobile */
       }
     </style>
     <script is:inline>
@@ -73,6 +92,19 @@ const mobileFocus = hasList ? mobileMain : "reader";
         // close the drawer when a sidebar link is tapped
         document.querySelectorAll(".shell-sidebar a").forEach(function (a) {
           a.addEventListener("click", close);
+        });
+        // List collapse — hide the session-list pane so the reader takes the width (persisted).
+        var lt = document.getElementById("list-toggle");
+        if (lt) lt.addEventListener("click", function () {
+          var on = document.documentElement.classList.toggle("list-collapsed");
+          try { localStorage.setItem("ccaudit-list-collapsed", on ? "1" : "0"); } catch (e) {}
+        });
+        // Sidebar icon-rail toggle (button lives in the sidebar header).
+        document.addEventListener("click", function (e) {
+          var t = e.target.closest && e.target.closest("#rail-toggle");
+          if (!t) return;
+          var on = document.documentElement.classList.toggle("nav-rail");
+          try { localStorage.setItem("ccaudit-nav-rail", on ? "1" : "0"); } catch (e2) {}
         });
       })();
     </script>

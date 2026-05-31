@@ -265,6 +265,12 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
   .prose-warm :global(a) { color:var(--amber); }
   .prose-warm :global(ul), .prose-warm :global(ol) { margin:0 0 10px; padding-left:22px; }
   .prose-warm :global(h1), .prose-warm :global(h2), .prose-warm :global(h3) { font-family:var(--serif); color:var(--text); margin:14px 0 8px; }
+  /* GFM tables — marked emits them, but they were unstyled (collapsed/illegible). Scrollable on overflow. */
+  .prose-warm :global(table) { display:block; width:max-content; max-width:100%; overflow-x:auto; border-collapse:collapse; margin:10px 0; font-size:12.5px; }
+  .prose-warm :global(th), .prose-warm :global(td) { border:1px solid var(--border); padding:6px 11px; text-align:left; vertical-align:top; }
+  .prose-warm :global(th) { background:var(--raise); color:var(--text); font-weight:600; white-space:nowrap; }
+  .prose-warm :global(td) { color:var(--text-dim); }
+  .prose-warm :global(tr:nth-child(even) td) { background:rgba(255,255,255,.015); }
   .mini { position:fixed; right:8px; top:118px; bottom:20px; width:8px; display:flex; flex-direction:column; gap:3px; align-items:center; z-index:20; }
   /* On narrow screens the thread rail/minimap would overlay the transcript — hide them. */
   @media (max-width: 900px) { .seg-nav, .mini { display:none; } }
