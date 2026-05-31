@@ -1,1 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><text y="13" font-size="14">📚</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ccaudit">
+  <rect width="64" height="64" rx="14" fill="#1E1915"/>
+  <!-- open "C" (chat ring), opening to the right -->
+  <path d="M43 16.5 A18 18 0 1 0 43 47.5" fill="none" stroke="#B5824D" stroke-width="6" stroke-linecap="round"/>
+  <!-- speech-bubble tail at the opening -->
+  <path d="M42 44.5 L54 54 L41.5 49.5 Z" fill="#B5824D"/>
+  <!-- three dots (the "audit" message marks) -->
+  <g fill="#B5824D">
+    <circle cx="30.5" cy="24.5" r="2.8"/>
+    <circle cx="30.5" cy="32" r="2.8"/>
+    <circle cx="30.5" cy="39.5" r="2.8"/>
+  </g>
+</svg>
