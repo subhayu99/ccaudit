@@ -1,6 +1,7 @@
 ---
-// src/components/CommandPalette.astro — ⌘K fuzzy jump + search entry.
-// Items are passed as JSON via a data-attr (avoids the Vite dev script-scan quirk).
+// src/components/CommandPalette.astro — ⌘K jump + live full-text search.
+// Jump items are passed as JSON via a data-attr (avoids the Vite dev script-scan quirk).
+// Search hits are fetched live from /api/search and grouped (collapsibly) by session.
 interface Item { label: string; sub: string; href: string; kind: string; }
 interface Props { items: Item[]; }
 const { items } = Astro.props;
@@ -10,98 +11,236 @@ const json = JSON.stringify(items);
 <div id="cmdk" class="cmdk" hidden>
   <div class="cmdk-backdrop" id="cmdk-backdrop"></div>
   <div class="cmdk-panel" role="dialog" aria-modal="true">
-    <input id="cmdk-input" type="text" placeholder="Jump to a repo or session… (or type to search history)" autocomplete="off" />
+    <input id="cmdk-input" type="text" placeholder="Search your history, or jump to a repo / session…" autocomplete="off" spellcheck="false" />
     <ul id="cmdk-list"></ul>
-    <div class="cmdk-foot"><span>↑↓ navigate</span><span>↵ open</span><span>esc close</span></div>
+    <div class="cmdk-foot"><span>↑↓ navigate</span><span>← → fold</span><span>↵ open</span><span>esc close</span></div>
   </div>
 </div>
 
-<style>
-  .cmdk { position:fixed; inset:0; z-index:50; display:flex; align-items:flex-start; justify-content:center; padding-top:14vh; }
-  .cmdk-backdrop { position:absolute; inset:0; background:rgba(0,0,0,.55); }
-  .cmdk-panel { position:relative; width:min(640px,92vw); background:var(--panel); border:1px solid var(--border); border-radius:14px; box-shadow:0 24px 60px rgba(0,0,0,.5); overflow:hidden; }
-  #cmdk-input { width:100%; box-sizing:border-box; padding:16px 18px; background:transparent; border:none; border-bottom:1px solid var(--border-soft); color:var(--text); font-size:15px; outline:none; font-family:inherit; }
-  #cmdk-list { list-style:none; margin:0; padding:6px; max-height:48vh; overflow-y:auto; }
-  .cmdk-item { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:8px; cursor:pointer; }
-  .cmdk-item .lbl { color:var(--text); font-size:14px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .cmdk-item .sub { color:var(--text-faint); font-size:11.5px; font-family:var(--mono); white-space:nowrap; }
-  .cmdk-item .dot { width:7px; height:7px; border-radius:50%; flex:none; }
-  .cmdk-item[aria-selected="true"] { background:var(--raise); }
-  .cmdk-empty { padding:14px 14px; color:var(--text-faint); font-size:13px; text-align:center; }
-  .cmdk-foot { display:flex; gap:16px; padding:8px 14px; border-top:1px solid var(--border-soft); color:var(--text-faint); font-size:11px; }
-</style>
-
 <script>
+  // @ts-nocheck — client-side DOM glue; relaxed like the other viz scripts (noUncheckedIndexedAccess).
   type Item = { label: string; sub: string; href: string; kind: string };
+  type Line = { lineNo: number; snippet: string };
+  type Group = { sessionId: string; title: string; sub: string; count: number; lines: Line[] };
+  type Row =
+    | { t: "sec"; label: string }
+    | { t: "jump"; item: Item }
+    | { t: "group"; g: Group }
+    | { t: "line"; g: Group; line: Line }
+    | { t: "seeall"; href: string }
+    | { t: "info"; text: string };
+
   const root = document.getElementById("cmdk")!;
   const input = document.getElementById("cmdk-input") as HTMLInputElement;
   const listEl = document.getElementById("cmdk-list")!;
   const all: Item[] = JSON.parse(document.getElementById("cmdk-data")!.dataset.items || "[]");
-  let results: Item[] = [];
-  let sel = 0;
-  let pendingSearchHref = ""; // full-text fallback for the empty-results state
 
+  let q = "";
+  let groups: Group[] = [];
+  let total = 0;
+  let groupsQuery = ""; // the query `groups` belongs to (guards against stale display)
+  let expanded = new Set<string>();
+  let rows: Row[] = [];
+  let nav: number[] = []; // indices into `rows` that are selectable
+  let sel = 0;
+  let seq = 0; // fetch race guard
+  let debTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
   const colorFor = (k: string) =>
     k === "repo" ? "var(--c-green)" : k === "workdir" ? "var(--violet)" : k === "search" ? "var(--amber)" : "var(--c-blue)";
+  const selectable = (r: Row) => r.t === "jump" || r.t === "group" || r.t === "line" || r.t === "seeall";
+  const lineHref = (g: Group, line: Line) => `/?session=${g.sessionId}#m${line.lineNo}`;
+
+  function buildRows() {
+    rows = [];
+    const query = q.trim();
+    if (!query) {
+      all.slice(0, 40).forEach((item) => rows.push({ t: "jump", item }));
+    } else {
+      const ql = query.toLowerCase();
+      const jumps = all.filter((it) => it.label.toLowerCase().includes(ql) || it.sub.toLowerCase().includes(ql)).slice(0, 6);
+      if (jumps.length) {
+        rows.push({ t: "sec", label: "Jump to" });
+        jumps.forEach((item) => rows.push({ t: "jump", item }));
+      }
+      const ready = groupsQuery === query;
+      rows.push({ t: "sec", label: ready ? `Messages${total ? ` · ${total}` : ""}` : "Messages · searching…" });
+      if (ready) {
+        if (groups.length === 0) rows.push({ t: "info", text: "No message matches" });
+        for (const g of groups) {
+          rows.push({ t: "group", g });
+          if (expanded.has(g.sessionId)) for (const line of g.lines) rows.push({ t: "line", g, line });
+        }
+      }
+      rows.push({ t: "seeall", href: `/search?q=${encodeURIComponent(query)}` });
+    }
+    nav = rows.map((r, i) => (selectable(r) ? i : -1)).filter((i) => i >= 0);
+    if (sel >= nav.length) sel = Math.max(0, nav.length - 1);
+  }
 
   function render() {
     listEl.innerHTML = "";
-    if (results.length === 0) {
-      const li = document.createElement("li");
-      li.className = "cmdk-empty";
-      li.textContent = "No matches — press ↵ for full-text search";
-      listEl.appendChild(li);
-      return;
-    }
-    let selEl: HTMLElement | null = null;
-    results.forEach((r, i) => {
-      const li = document.createElement("li");
-      li.className = "cmdk-item";
-      const isSel = i === sel;
-      li.setAttribute("aria-selected", String(isSel));
-      li.innerHTML = `<span class="dot" style="background:${colorFor(r.kind)}"></span><span class="lbl"></span><span class="sub"></span>`;
-      (li.querySelector(".lbl") as HTMLElement).textContent = r.label;
-      (li.querySelector(".sub") as HTMLElement).textContent = r.sub;
-      li.addEventListener("click", () => go(r));
-      listEl.appendChild(li);
-      if (isSel) selEl = li;
+    rows.forEach((r, i) => {
+      const isSel = nav[sel] === i;
+      let el: HTMLElement;
+      if (r.t === "sec") {
+        el = document.createElement("li");
+        el.className = "cmdk-sec";
+        el.textContent = r.label;
+      } else if (r.t === "info") {
+        el = document.createElement("li");
+        el.className = "cmdk-info";
+        el.textContent = r.text;
+      } else if (r.t === "jump") {
+        el = document.createElement("li");
+        el.className = "cmdk-item";
+        el.innerHTML = `<span class="dot" style="background:${colorFor(r.item.kind)}"></span><span class="lbl"></span><span class="sub"></span>`;
+        (el.querySelector(".lbl") as HTMLElement).textContent = r.item.label;
+        (el.querySelector(".sub") as HTMLElement).textContent = r.item.sub;
+      } else if (r.t === "group") {
+        const open = expanded.has(r.g.sessionId);
+        el = document.createElement("li");
+        el.className = "cmdk-group";
+        el.setAttribute("data-open", String(open));
+        el.innerHTML = `<span class="chev">▸</span><span class="gtitle"></span><span class="gsub"></span><span class="gcount"></span>`;
+        (el.querySelector(".gtitle") as HTMLElement).textContent = r.g.title;
+        (el.querySelector(".gsub") as HTMLElement).textContent = r.g.sub;
+        (el.querySelector(".gcount") as HTMLElement).textContent = String(r.g.count);
+      } else if (r.t === "line") {
+        el = document.createElement("li");
+        el.className = "cmdk-line";
+        el.innerHTML = `<span class="ln">${r.line.lineNo}</span><span class="snip">${r.line.snippet}</span>`;
+      } else {
+        el = document.createElement("li");
+        el.className = "cmdk-item cmdk-seeall";
+        el.innerHTML = `<span class="dot" style="background:var(--amber)"></span><span class="lbl"></span><span class="sub">full page →</span>`;
+        (el.querySelector(".lbl") as HTMLElement).textContent = `See all results for “${q.trim()}”`;
+      }
+      if (selectable(r)) {
+        el.setAttribute("aria-selected", String(isSel));
+        el.addEventListener("click", () => act(r));
+        el.addEventListener("mousemove", () => { const n = nav.indexOf(i); if (n >= 0 && n !== sel) { sel = n; markSel(); } });
+      }
+      listEl.appendChild(el);
     });
-    // Keep the highlighted row visible during keyboard navigation.
-    // (cast: TS can't track the assignment inside the forEach callback above.)
-    (selEl as HTMLElement | null)?.scrollIntoView({ block: "nearest" });
+    const cur = listEl.children[nav[sel]] as HTMLElement | undefined;
+    cur?.scrollIntoView({ block: "nearest" });
   }
-  function compute(q: string) {
-    const query = q.trim().toLowerCase();
-    if (!query) { results = all.slice(0, 30); }
-    else {
-      const matches = all.filter((it) => it.label.toLowerCase().includes(query) || it.sub.toLowerCase().includes(query)).slice(0, 30);
-      // No literal matches → show the muted empty row; ↵ still triggers full-text search.
-      results = matches.length
-        ? [{ label: `Search history for “${q.trim()}”`, sub: "full-text", href: `/search?q=${encodeURIComponent(q.trim())}`, kind: "search" }, ...matches]
-        : [];
-      pendingSearchHref = `/search?q=${encodeURIComponent(q.trim())}`;
-    }
-    sel = 0; render();
+
+  // Lightweight selection repaint (no full rebuild) for hover/arrow movement.
+  function markSel() {
+    rows.forEach((r, i) => {
+      if (!selectable(r)) return;
+      (listEl.children[i] as HTMLElement)?.setAttribute("aria-selected", String(nav[sel] === i));
+    });
+    (listEl.children[nav[sel]] as HTMLElement | undefined)?.scrollIntoView({ block: "nearest" });
   }
-  function go(r: Item | undefined) { if (r) window.location.href = r.href; }
-  function open() { root.hidden = false; input.value = ""; compute(""); input.focus(); }
+
+  function act(r: Row) {
+    if (r.t === "jump") window.location.href = r.item.href;
+    else if (r.t === "line") window.location.href = lineHref(r.g, r.line);
+    else if (r.t === "seeall") window.location.href = r.href;
+    else if (r.t === "group") toggle(r.g.sessionId);
+  }
+
+  function toggle(sessionId: string) {
+    if (expanded.has(sessionId)) expanded.delete(sessionId);
+    else expanded.add(sessionId);
+    const keepGroup = sessionId;
+    buildRows();
+    // keep the selection on the toggled group
+    const gi = rows.findIndex((r) => r.t === "group" && r.g.sessionId === keepGroup);
+    if (gi >= 0) sel = Math.max(0, nav.indexOf(gi));
+    render();
+  }
+
+  async function runSearch(query: string) {
+    const mySeq = ++seq;
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      if (mySeq !== seq || q.trim() !== query) return; // stale
+      groups = data.groups || [];
+      total = data.total || 0;
+      groupsQuery = query;
+      expanded = new Set(groups.map((g) => g.sessionId)); // all groups open by default; collapse to taste
+      sel = 0;
+      buildRows();
+      render();
+    } catch { /* leave the searching… state; user can retry */ }
+  }
+
+  function onInput() {
+    q = input.value;
+    const query = q.trim();
+    sel = 0;
+    buildRows();
+    render();
+    clearTimeout(debTimer);
+    if (query.length >= 2) debTimer = setTimeout(() => runSearch(query), 160);
+    else { groups = []; total = 0; groupsQuery = ""; }
+  }
+
+  function open() {
+    root.hidden = false;
+    input.value = ""; q = ""; groups = []; total = 0; groupsQuery = ""; expanded = new Set(); sel = 0;
+    buildRows(); render(); input.focus();
+  }
   function close() { root.hidden = true; }
 
   document.addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); root.hidden ? open() : close(); return; }
     if (root.hidden) return;
+    const curRow = rows[nav[sel]];
     if (e.key === "Escape") { close(); }
-    else if (e.key === "ArrowDown") { e.preventDefault(); sel = Math.min(sel + 1, results.length - 1); render(); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); sel = Math.max(sel - 1, 0); render(); }
-    else if (e.key === "Enter") {
-      e.preventDefault();
-      if (results.length === 0) { if (pendingSearchHref) window.location.href = pendingSearchHref; }
-      else go(results[sel]);
+    else if (e.key === "ArrowDown") { e.preventDefault(); sel = Math.min(sel + 1, nav.length - 1); markSel(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); sel = Math.max(sel - 1, 0); markSel(); }
+    else if (e.key === "ArrowRight") { if (curRow?.t === "group" && !expanded.has(curRow.g.sessionId)) { e.preventDefault(); toggle(curRow.g.sessionId); } }
+    else if (e.key === "ArrowLeft") {
+      if (curRow?.t === "group" && expanded.has(curRow.g.sessionId)) { e.preventDefault(); toggle(curRow.g.sessionId); }
+      else if (curRow?.t === "line") { e.preventDefault(); toggle(curRow.g.sessionId); }
     }
+    else if (e.key === "Enter") { e.preventDefault(); if (curRow) act(curRow); }
   });
-  input.addEventListener("input", () => compute(input.value));
+  input.addEventListener("input", onInput);
   document.getElementById("cmdk-backdrop")!.addEventListener("click", close);
-  // open from the sidebar search affordance
-  document.querySelectorAll('[data-open-cmdk]').forEach((el) =>
+  document.querySelectorAll("[data-open-cmdk]").forEach((el) =>
     el.addEventListener("click", (e) => { e.preventDefault(); open(); }));
 </script>
+
+<!-- is:global because the list rows are created at runtime (innerHTML/createElement) and never
+     receive Astro's scope attribute. Every rule is namespaced by #cmdk so nothing leaks. -->
+<style is:global>
+  #cmdk { position:fixed; inset:0; z-index:50; display:flex; align-items:flex-start; justify-content:center; padding-top:13vh; }
+  #cmdk[hidden] { display:none; }
+  #cmdk .cmdk-backdrop { position:absolute; inset:0; background:rgba(10,9,8,.55); backdrop-filter:blur(3px); }
+  #cmdk .cmdk-panel { position:relative; width:min(680px,94vw); background:var(--panel-2); border:1px solid var(--border); border-radius:14px; box-shadow:0 24px 70px rgba(0,0,0,.55); overflow:hidden; }
+  #cmdk-input { width:100%; box-sizing:border-box; padding:15px 18px; background:transparent; border:none; border-bottom:1px solid var(--border-soft); color:var(--text); font-size:15px; outline:none; font-family:inherit; }
+  #cmdk-input::placeholder { color:var(--text-faint); }
+  #cmdk-list { list-style:none; margin:0; padding:6px; max-height:58vh; overflow-y:auto; }
+  #cmdk .cmdk-sec { padding:10px 12px 4px; font-size:10px; text-transform:uppercase; letter-spacing:.11em; color:var(--text-faint); font-weight:700; }
+  #cmdk .cmdk-info { padding:7px 13px 10px; color:var(--text-faint); font-size:12.5px; }
+  #cmdk .cmdk-item { display:flex; align-items:center; gap:10px; padding:8px 11px; border-radius:8px; cursor:pointer; }
+  #cmdk .cmdk-item:hover, #cmdk .cmdk-item[aria-selected="true"] { background:var(--raise); }
+  #cmdk .cmdk-item[aria-selected="true"] { box-shadow:inset 0 0 0 1px var(--border); }
+  #cmdk .cmdk-item .dot { width:7px; height:7px; border-radius:50%; flex:none; }
+  #cmdk .cmdk-item .lbl { color:var(--text); font-size:14px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #cmdk .cmdk-item .sub { color:var(--text-faint); font-size:11.5px; font-family:var(--mono); white-space:nowrap; }
+  /* collapsible session group header */
+  #cmdk .cmdk-group { display:flex; align-items:center; gap:8px; padding:8px 11px; border-radius:8px; cursor:pointer; }
+  #cmdk .cmdk-group:hover, #cmdk .cmdk-group[aria-selected="true"] { background:var(--raise); }
+  #cmdk .cmdk-group[aria-selected="true"] { box-shadow:inset 0 0 0 1px var(--border); }
+  #cmdk .cmdk-group .chev { color:var(--text-faint); font-size:10px; width:11px; flex:none; transition:transform .15s ease; }
+  #cmdk .cmdk-group[data-open="true"] .chev { transform:rotate(90deg); }
+  #cmdk .cmdk-group .gtitle { color:var(--text); font-size:13.5px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #cmdk .cmdk-group .gsub { color:var(--text-faint); font-size:11px; font-family:var(--mono); white-space:nowrap; max-width:34%; overflow:hidden; text-overflow:ellipsis; }
+  #cmdk .cmdk-group .gcount { color:var(--amber); font-size:11px; font-family:var(--mono); background:rgba(210,168,95,.14); border-radius:10px; padding:0 7px; flex:none; }
+  /* matched message line */
+  #cmdk .cmdk-line { display:flex; gap:10px; align-items:baseline; padding:5px 11px 5px 30px; border-radius:8px; cursor:pointer; }
+  #cmdk .cmdk-line:hover, #cmdk .cmdk-line[aria-selected="true"] { background:var(--raise); }
+  #cmdk .cmdk-line .ln { color:var(--amber); font-family:var(--mono); font-size:10.5px; flex:none; min-width:34px; }
+  #cmdk .cmdk-line .snip { color:var(--text-dim); font-size:12px; line-height:1.45; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #cmdk .cmdk-line .snip mark { background:transparent; color:var(--amber-bright); font-weight:600; padding:0; }
+  #cmdk .cmdk-foot { display:flex; gap:16px; padding:8px 14px; border-top:1px solid var(--border-soft); color:var(--text-faint); font-size:11px; }
+</style>
