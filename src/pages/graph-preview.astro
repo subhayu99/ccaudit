@@ -1,0 +1,230 @@
+---
+// THROWAWAY prototype to compare graph aesthetics on real data. Not linked in the app.
+import { getDb } from "../db/init";
+import { getTopicGraphData } from "../db/topic-graph";
+import { getHierarchyGraphData } from "../db/hierarchy-graph";
+import { capSessionsPerHub } from "../db/graph";
+
+const style = (Astro.url.searchParams.get("style") || "force") as "force" | "bubbles" | "radial" | "hierarchy";
+let json = '{"nodes":[],"links":[]}';
+try {
+  const db = getDb();
+  const data =
+    style === "hierarchy"
+      ? getHierarchyGraphData(db, { includeTopics: true })
+      : capSessionsPerHub(getTopicGraphData(db), 18).data;
+  json = JSON.stringify(data);
+} catch {}
+const tabs = [
+  ["force", "Topics (force)"],
+  ["hierarchy", "Hierarchy"],
+  ["bubbles", "Nested bubbles"],
+  ["radial", "Radial hubs"],
+] as const;
+---
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ccaudit — graph preview ({style})</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #1b1916; }
+      #wrap { position: fixed; inset: 0; background: radial-gradient(ellipse 80% 70% at 50% 42%, #232019 0%, #1b1916 55%, #141210 100%); overflow: hidden; }
+      svg { width: 100%; height: 100%; display: block; cursor: grab; }
+      svg:active { cursor: grabbing; }
+      .bar { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; gap: 6px; background: rgba(28,25,21,.72); backdrop-filter: blur(8px); border: 1px solid #3a342b; border-radius: 12px; padding: 5px; }
+      .bar a { padding: 6px 13px; border-radius: 8px; font: 500 13px/1 ui-sans-serif, system-ui, sans-serif; color: #b8ab93; text-decoration: none; }
+      .bar a[data-on="true"] { background: #d2a85f; color: #241f17; font-weight: 600; }
+      .hint { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 10; color: #8a8170; font: 11.5px/1 ui-sans-serif, system-ui, sans-serif; }
+      .glabel { font-family: Georgia, "Times New Roman", serif; fill: #efe6d6; pointer-events: none; }
+      #tip { position: fixed; z-index: 20; pointer-events: none; display: none; background: #221f1a; border: 1px solid #3a342b; border-radius: 9px; padding: 7px 11px; box-shadow: 0 14px 40px rgba(0,0,0,.5); font: 12.5px/1.4 ui-sans-serif, system-ui, sans-serif; max-width: 280px; }
+      #tip .t { color: #efe6d6; font-weight: 600; }
+      #tip .s { color: #b8ab93; font-size: 11.5px; }
+      .node, .bubble { cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <div class="bar">
+      {tabs.map(([k, lbl]) => <a href={`/graph-preview?style=${k}`} data-on={style === k}>{lbl}</a>)}
+    </div>
+    <div id="wrap"><svg id="g"></svg></div>
+    <div id="tip"></div>
+    <div class="hint">drag to pan · scroll to zoom · hover to focus{style === "bubbles" ? " · click a bubble to zoom in" : ""}</div>
+    <div id="data" data-graph={json} data-style={style} hidden></div>
+
+    <script>
+      import { select } from "d3-selection";
+      import { forceSimulation, forceManyBody, forceLink, forceCenter, forceCollide, forceX, forceY } from "d3-force";
+      import { zoom, zoomIdentity } from "d3-zoom";
+      import { drag } from "d3-drag";
+
+      const AMBER = "#d2a85f", AMBER_HI = "#ecca8e", AMBER_DIM = "rgba(210,168,95,.16)", VIOLET = "#9b82d6";
+      const el = document.getElementById("data");
+      const data = JSON.parse(el.dataset.graph);
+      const style = el.dataset.style;
+      const W = window.innerWidth, H = window.innerHeight;
+      const svg = select("#g").attr("viewBox", `0 0 ${W} ${H}`);
+      const root = svg.append("g");
+      const tip = document.getElementById("tip");
+
+      const zoomB = zoom().scaleExtent([0.15, 6]).on("zoom", (e) => root.attr("transform", e.transform));
+      svg.call(zoomB);
+
+      // soft glow for hubs
+      const defs = svg.append("defs");
+      const f = defs.append("filter").attr("id", "glow").attr("x", "-70%").attr("y", "-70%").attr("width", "240%").attr("height", "240%");
+      f.append("feGaussianBlur").attr("stdDeviation", "5").attr("result", "b");
+      const fm = f.append("feMerge"); fm.append("feMergeNode").attr("in", "b"); fm.append("feMergeNode").attr("in", "SourceGraphic");
+
+      function showTip(e, title, sub) {
+        tip.innerHTML = `<div class="t">${title}</div>` + (sub ? `<div class="s">${sub}</div>` : "");
+        tip.style.display = "block"; moveTip(e);
+      }
+      function moveTip(e) { tip.style.left = e.clientX + 14 + "px"; tip.style.top = e.clientY + 14 + "px"; }
+      function hideTip() { tip.style.display = "none"; }
+
+      function fitView(ms) {
+        const bb = root.node().getBBox();
+        if (!bb.width || !bb.height) return;
+        const pad = 90;
+        const k = Math.min((W - pad * 2) / bb.width, (H - pad * 2) / bb.height, 2.4);
+        const tx = W / 2 - k * (bb.x + bb.width / 2);
+        const ty = H / 2 - k * (bb.y + bb.height / 2);
+        svg.transition().duration(ms ?? 600).call(zoomB.transform, zoomIdentity.translate(tx, ty).scale(k));
+      }
+
+      const topics = data.nodes.filter((n) => n.type === "topic");
+      const sessions = data.nodes.filter((n) => n.type === "session");
+      const hubOf = {}; data.links.forEach((l) => (hubOf[l.source] = l.target));
+      const byTopic = {}; topics.forEach((t) => (byTopic[t.id] = []));
+      sessions.forEach((s) => { const h = hubOf[s.id]; if (byTopic[h]) byTopic[h].push(s); });
+      const hubR = (t) => 9 + Math.sqrt(t.sessionCount || 1) * 4.5;
+      const sessR = (s) => 2.6 + Math.sqrt(s.messageCount || 1) * 0.22;
+
+      // Per-type visual style (warm palette, no blue): repo=green, workdir/folder=orange,
+      // topic=amber, session=violet. Hubs get a label + halo; repo/topic/workdir glow.
+      const TYPE = {
+        repo:    { color: "#7fae7a", hub: true,  glow: true,  r: (d) => 10 + Math.sqrt(d.workdirCount || 1) * 4 },
+        topic:   { color: "#d2a85f", hub: true,  glow: true,  r: (d) => 9 + Math.sqrt(d.sessionCount || 1) * 4.5 },
+        workdir: { color: "#cf9152", hub: true,  glow: true,  r: () => 7 },
+        folder:  { color: "#cf9152", hub: true,  glow: true,  r: (d) => 7 + Math.sqrt(d.projectCount || 1) * 2 },
+        project: { color: "#cf9152", hub: true,  glow: false, r: () => 6 },
+        session: { color: "#9b82d6", hub: false, glow: false, r: (d) => 2.6 + Math.sqrt(d.messageCount || 1) * 0.22 },
+      };
+      const ts = (d) => TYPE[d.type] || TYPE.session;
+
+      if (style === "force" || style === "hierarchy") renderForce();
+      else if (style === "bubbles") renderBubbles();
+      else renderRadial();
+
+      function renderForce() {
+        const link = root.append("g").selectAll("path").data(data.links).join("path")
+          .attr("fill", "none").attr("stroke", AMBER).attr("stroke-opacity", 0.14).attr("stroke-width", 1);
+        const g = root.append("g").selectAll("g").data(data.nodes).join("g").attr("class", "node");
+        g.filter((d) => ts(d).hub).append("circle").attr("r", (d) => ts(d).r(d) + 7)
+          .attr("fill", (d) => ts(d).color).attr("fill-opacity", 0.16);
+        g.append("circle")
+          .attr("r", (d) => ts(d).r(d))
+          .attr("fill", (d) => ts(d).color)
+          .attr("fill-opacity", (d) => (ts(d).hub ? 1 : 0.6))
+          .attr("stroke", (d) => (ts(d).hub ? "#ecca8e" : "none")).attr("stroke-opacity", 0.35)
+          .attr("filter", (d) => (ts(d).glow ? "url(#glow)" : null));
+        g.filter((d) => ts(d).hub).append("text").attr("class", "glabel")
+          .attr("text-anchor", "middle").attr("dy", (d) => -ts(d).r(d) - 9).attr("font-size", (d) => (d.type === "session" ? 11 : 13.5))
+          .attr("stroke", "#1b1916").attr("stroke-width", 3.2).attr("paint-order", "stroke").text((d) => d.label);
+
+        const sim = forceSimulation(data.nodes)
+          .force("charge", forceManyBody().strength((d) => (ts(d).hub ? -300 : -20)))
+          .force("link", forceLink(data.links).id((d) => d.id).distance((l) => (l.kind === "session-topic" ? 70 : 40)).strength(0.5))
+          .force("x", forceX(W / 2).strength(0.05)).force("y", forceY(H / 2).strength(0.06))
+          .force("collide", forceCollide((d) => ts(d).r(d) + (ts(d).hub ? 14 : 2)));
+        const curve = (d) => {
+          const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+          const dr = Math.hypot(dx, dy) * 1.6;
+          return `M${d.source.x},${d.source.y}A${dr},${dr} 0 0,1 ${d.target.x},${d.target.y}`;
+        };
+        const draw = () => { link.attr("d", curve); g.attr("transform", (d) => `translate(${d.x},${d.y})`); };
+        for (let i = 0; i < 280; i++) sim.tick();
+        sim.stop(); draw(); fitView(0);
+
+        const nbr = (d) => { const s = new Set([d.id]); data.links.forEach((l) => { if (l.source.id === d.id) s.add(l.target.id); if (l.target.id === d.id) s.add(l.source.id); }); return s; };
+        g.on("mouseover", (e, d) => {
+            const s = nbr(d);
+            g.style("opacity", (o) => (s.has(o.id) ? 1 : 0.12));
+            link.style("stroke-opacity", (l) => (l.source.id === d.id || l.target.id === d.id ? 0.55 : 0.03));
+            const sub = d.type === "topic" ? `topic · ${d.sessionCount} sessions`
+              : d.type === "repo" ? `repo · ${d.workdirCount} folder${d.workdirCount === 1 ? "" : "s"}`
+              : d.type === "workdir" ? "folder"
+              : `${d.messageCount || 0} messages`;
+            showTip(e, d.label, sub);
+          })
+          .on("mousemove", moveTip)
+          .on("mouseout", () => { g.style("opacity", 1); link.style("stroke-opacity", 0.14); hideTip(); })
+          .call(drag()
+            .on("start", (e, d) => { d.fx = d.x; d.fy = d.y; })
+            .on("drag", (e, d) => { d.fx = e.x; d.fy = e.y; sim.alpha(0.3).restart(); })
+            .on("end", (e, d) => { d.fx = null; d.fy = null; }));
+        sim.on("tick", draw);
+      }
+
+      function renderBubbles() {
+        const nodes = topics.map((t) => {
+          const ss = byTopic[t.id];
+          return { ...t, sessions: ss, r: Math.max(38, 22 + 6 * Math.sqrt(ss.length)) };
+        });
+        const sim = forceSimulation(nodes)
+          .force("x", forceX(W / 2).strength(0.05)).force("y", forceY(H / 2).strength(0.06))
+          .force("charge", forceManyBody().strength(12))
+          .force("collide", forceCollide((d) => d.r + 14).strength(0.95));
+        for (let i = 0; i < 340; i++) sim.tick(); sim.stop();
+
+        const gb = root.append("g").selectAll("g").data(nodes).join("g").attr("class", "bubble").attr("transform", (d) => `translate(${d.x},${d.y})`);
+        gb.append("circle").attr("class", "ring").attr("r", (d) => d.r)
+          .attr("fill", "rgba(210,168,95,.06)").attr("stroke", AMBER).attr("stroke-opacity", 0.42).attr("stroke-width", 1.3);
+        gb.each(function (d) {
+          const grp = select(this), n = d.sessions.length, inner = d.r - 10;
+          d.sessions.forEach((s, j) => {
+            const a = j * 2.39996323, rr = n <= 1 ? 0 : inner * Math.sqrt(j / (n - 1)) * 0.92;
+            grp.append("circle").attr("cx", Math.cos(a) * rr).attr("cy", Math.sin(a) * rr)
+              .attr("r", Math.min(5.5, sessR(s) + 0.6)).attr("fill", VIOLET).attr("fill-opacity", 0.8);
+          });
+        });
+        gb.append("text").attr("class", "glabel").attr("text-anchor", "middle").attr("dy", (d) => -d.r - 9)
+          .attr("font-size", 14).attr("stroke", "#1b1916").attr("stroke-width", 3.5).attr("paint-order", "stroke").text((d) => d.label);
+        fitView(0);
+
+        gb.on("mouseover", function (e, d) {
+            gb.style("opacity", (o) => (o.id === d.id ? 1 : 0.28));
+            select(this).select(".ring").attr("stroke-opacity", 0.95).attr("fill", "rgba(210,168,95,.12)");
+            showTip(e, d.label, `${d.sessions.length} session${d.sessions.length === 1 ? "" : "s"} · click to zoom`);
+          })
+          .on("mousemove", moveTip)
+          .on("mouseout", function () { gb.style("opacity", 1); select(this).select(".ring").attr("stroke-opacity", 0.42).attr("fill", "rgba(210,168,95,.06)"); hideTip(); })
+          .on("click", (e, d) => {
+            const k = Math.min(5, Math.max(W, H) * 0.42 / (d.r + 20));
+            svg.transition().duration(600).call(zoomB.transform, zoomIdentity.translate(W / 2, H / 2).scale(k).translate(-d.x, -d.y));
+          });
+      }
+
+      function renderRadial() {
+        const cx = W / 2, cy = H / 2, ring = Math.min(W, H) * 0.30, n = topics.length;
+        const placed = topics.map((t, i) => { const a = (i / n) * Math.PI * 2 - Math.PI / 2; return { ...t, x: cx + Math.cos(a) * ring, y: cy + Math.sin(a) * ring }; });
+        const lg = root.append("g"), ng = root.append("g");
+        placed.forEach((t) => {
+          const sess = byTopic[t.id], sn = sess.length, local = Math.max(26, 14 + sn * 1.5);
+          sess.forEach((s, j) => {
+            const a = (j / Math.max(sn, 1)) * Math.PI * 2, sx = t.x + Math.cos(a) * local, sy = t.y + Math.sin(a) * local;
+            lg.append("line").attr("x1", t.x).attr("y1", t.y).attr("x2", sx).attr("y2", sy).attr("stroke", AMBER).attr("stroke-opacity", 0.1);
+            ng.append("circle").attr("cx", sx).attr("cy", sy).attr("r", Math.min(4.5, sessR(s))).attr("fill", VIOLET).attr("fill-opacity", 0.6);
+          });
+        });
+        const hg = ng.selectAll("g.h").data(placed).join("g").attr("transform", (d) => `translate(${d.x},${d.y})`);
+        hg.append("circle").attr("r", (d) => hubR(d) + 6).attr("fill", AMBER_DIM);
+        hg.append("circle").attr("r", (d) => hubR(d)).attr("fill", AMBER).attr("filter", "url(#glow)");
+        hg.append("text").attr("class", "glabel").attr("text-anchor", "middle").attr("dy", (d) => -hubR(d) - 8)
+          .attr("font-size", 13).attr("stroke", "#1b1916").attr("stroke-width", 3).attr("paint-order", "stroke").text((d) => d.label);
+        fitView(0);
+      }
+    </script>
+  </body>
+</html>
