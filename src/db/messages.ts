@@ -33,8 +33,13 @@ function rowToMessage(r: MessageRowSql): MessageRow {
 }
 
 export function insertMessages(db: Database.Database, rows: MessageRow[]): void {
+  // OR IGNORE: in append-mode re-indexing we hand the full parsed message set but only the
+  // new line_nos are absent (PK is session_id+line_no), so existing rows are kept and their
+  // FTS entries are not re-tokenized. In full-mode the session's rows were just deleted, so
+  // nothing is ignored. Claude Code session logs are append-only, so a given line_no's content
+  // is immutable — keeping the existing row is correct.
   const stmt = db.prepare(
-    `INSERT INTO messages
+    `INSERT OR IGNORE INTO messages
        (session_id, line_no, uuid, parent_uuid, type, role,
         is_sidechain, is_compact_summary, timestamp, text_content, raw_json)
      VALUES

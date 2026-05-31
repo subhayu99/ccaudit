@@ -121,14 +121,20 @@ export async function indexAll(
       tokenUsage: Object.keys(state.tokenUsage).length > 0 ? state.tokenUsage : null,
     };
 
+    // Append-only fast path: session logs only grow (a given line_no's content never changes),
+    // so when the file got LARGER we keep the existing message rows and let insertMessages
+    // (INSERT OR IGNORE) add just the new lines — FTS re-tokenizes only the delta, not the whole
+    // (possibly tens-of-thousands-of-message) session. Any other change (shrunk, or --force) does
+    // the safe full rebuild: delete every row, then re-insert.
+    const appendOnly = !opts.force && !!existing && e.fileSize > existing.fileSize;
     const tx = db.transaction(() => {
       upsertSession(db, session);
-      deleteSessionMessages(db, e.sessionId);
+      if (!appendOnly) deleteSessionMessages(db, e.sessionId);
       if (state.messages.length > 0) insertMessages(db, state.messages);
     });
     tx();
     stats.sessionsIndexed += 1;
-    opts.onProgress?.(`indexed ${e.projectLabel}/${e.sessionId} (${state.messageCount} msgs)`);
+    opts.onProgress?.(`indexed ${e.projectLabel}/${e.sessionId} (${state.messageCount} msgs${appendOnly ? ", append" : ""})`);
   }
 
   // Layer 1 repo-identity: capture immutable tokens for each distinct cwd

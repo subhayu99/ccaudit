@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   token_usage     TEXT,
   indexed_at      INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_sessions_file_path     ON sessions(file_path);
 CREATE INDEX IF NOT EXISTS idx_sessions_last_activity ON sessions(last_activity DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_project       ON sessions(project_dir, last_activity DESC);
 
