@@ -1,7 +1,7 @@
 ---
 // src/components/SessionListPane.astro
 import type { GroupedList } from "../db/library";
-import { formatTimestamp } from "../lib/render";
+import { formatTimestamp, relativeTime } from "../lib/render";
 interface Props { data: GroupedList; activeSession?: string; selParams?: string; }
 const { data, activeSession, selParams = "" } = Astro.props;
 const sessionHref = (id: string) => (selParams ? `/?${selParams}&session=${id}` : `/?session=${id}`);
@@ -21,10 +21,12 @@ const sessionHref = (id: string) => (selParams ? `/?${selParams}&session=${id}` 
         <a href={sessionHref(it.id)} class="card" data-active={it.id === activeSession}>
           <div class="ct-title">{it.title}</div>
           <div class="ct-meta">
-            <span class="badge wd">{it.workdirLabel}</span>
-            <span>{it.messageCount.toLocaleString()} msgs</span>
-            {it.compactCount > 0 && <span class="badge cmp">{it.compactCount} compact</span>}
-            <span class="ml-auto">{formatTimestamp(it.lastActivity)}</span>
+            <span class="badge wd" title={`folder · ${it.workdirLabel}`}>{it.workdirLabel}</span>
+            <span class="badge msg" title={`${it.messageCount.toLocaleString()} messages`}>{it.messageCount.toLocaleString()}</span>
+            {it.compactCount > 0 && (
+              <span class="badge cmp" title={`${it.compactCount} compact${it.compactCount === 1 ? "" : "s"}`}>⊟ {it.compactCount}</span>
+            )}
+            <span class="ct-time" title={formatTimestamp(it.lastActivity)}>{relativeTime(it.lastActivity)}</span>
           </div>
         </a>
       ))}
@@ -37,8 +39,18 @@ const sessionHref = (id: string) => (selParams ? `/?${selParams}&session=${id}` 
   .card:hover { background:var(--panel); }
   .card[data-active="true"] { background:var(--panel); border-color:var(--border); }
   .ct-title { font-size:13.5px; color:var(--text); font-weight:500; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; line-height:1.4; }
-  .ct-meta { display:flex; align-items:center; gap:8px; margin-top:7px; font-size:11.5px; color:var(--text-faint); }
-  .badge { display:inline-flex; align-items:center; gap:4px; padding:1px 7px; border-radius:12px; font-size:10.5px; font-family:var(--mono); }
-  .badge.wd { background:rgba(155,130,214,.14); color:#b6a2e0; }
-  .badge.cmp { background:rgba(207,138,74,.16); color:#e0a368; }
+  /* One compact meta line: color-coded number pills (no words) + relative time on the right.
+     Wraps gracefully to a 2nd line only when truly cramped; tokens never split (nowrap). */
+  .ct-meta { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:7px; font-size:11.5px; }
+  .ct-time { margin-left:auto; font-size:11px; font-family:var(--mono); color:var(--text-dim); white-space:nowrap; }
+  .badge { display:inline-flex; align-items:center; gap:3px; padding:1px 7px; border-radius:12px; font-size:10.5px; font-family:var(--mono); white-space:nowrap; }
+  /* Color = meaning: violet folder · green messages · orange compacts. */
+  .badge.wd  { background:rgba(155,130,214,.16); color:#c2b0e8; max-width:150px; overflow:hidden; text-overflow:ellipsis; }
+  .badge.msg { background:rgba(127,174,122,.18); color:#9ccd96; }
+  .badge.cmp { background:rgba(207,138,74,.18); color:#e6ad73; }
+  /* Light mode: the dark-tuned pill text washes out on the light panel — darken it. */
+  :global(.theme-light) .ct-time   { color:var(--text-dim); }
+  :global(.theme-light) .badge.wd  { background:rgba(124,92,196,.16); color:#5d40a8; }
+  :global(.theme-light) .badge.msg { background:rgba(90,138,85,.18); color:#3c7536; }
+  :global(.theme-light) .badge.cmp { background:rgba(185,114,47,.2); color:#8a5015; }
 </style>
