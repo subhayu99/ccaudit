@@ -56,10 +56,12 @@ const mobileFocus = hasList ? mobileMain : "reader";
       .shell-reader { overflow-y:auto; }
       /* Collapse states (persisted on <html>). */
       html.nav-rail { --cs:56px; }
+      /* Collapse the list by zeroing its track + clipping — NOT display:none, which would
+         drop it from the grid and let the reader auto-place into the now-empty 0px track. */
       html.list-collapsed { --cl:0px; }
-      html.list-collapsed .shell-list { display:none; }
-      /* Handle that sits on the list↔reader divider; collapses/expands the list. */
-      .list-toggle { position:fixed; top:9px; left:calc(var(--cs,264px) + var(--cl,372px) - 12px); z-index:25;
+      html.list-collapsed .shell-list { border-right:none; }
+      /* Handle straddling the list↔reader divider; collapses/expands the list. */
+      .list-toggle { position:fixed; top:9px; left:calc(var(--cs,264px) + var(--cl,372px)); transform:translateX(-50%); z-index:25;
         width:24px; height:24px; border-radius:7px; background:var(--panel); border:1px solid var(--border);
         color:var(--text-dim); cursor:pointer; font-size:12px; line-height:1; transition:left .16s ease, color .12s; }
       .list-toggle:hover { color:var(--text); background:var(--panel-2); }

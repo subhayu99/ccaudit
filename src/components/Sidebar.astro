@@ -25,7 +25,7 @@ const customTo = isCustom ? isoDay(ct) : "";
     <div class="w-[22px] h-[22px] rounded-md grid place-items-center font-bold text-[13px] shrink-0"
          style="background:linear-gradient(135deg,var(--amber),var(--c-orange)); color:#241f17;">c</div>
     <h1 class="font-serif text-[18px] font-semibold brand-name rail-hide" style="color:var(--text);">ccaudit</h1>
-    <button id="rail-toggle" class="rail-toggle ml-auto" title="Collapse sidebar to icons" aria-label="Collapse sidebar">«</button>
+    <button id="rail-toggle" class="rail-toggle ml-auto" title="Collapse / expand sidebar" aria-label="Toggle sidebar width"></button>
   </div>
   <a href="/search" data-open-cmdk class="mx-3 mb-3 flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px]"
      style="background:var(--canvas); border:1px solid var(--border); color:var(--text-faint); text-decoration:none; cursor:pointer;">
@@ -138,14 +138,18 @@ const customTo = isCustom ? isoDay(ct) : "";
   .rbtn { flex:1; font-size:11.5px; padding:3px 0; text-align:center; border-radius:7px; background:var(--canvas); border:1px solid var(--border); color:var(--text-dim); cursor:pointer; }
   .rbtn:hover { color:var(--text); }
   .rbtn[data-on="true"] { background:var(--amber); color:#241f17; border-color:var(--amber); font-weight:600; }
-  .range-custom { display:flex; flex-direction:column; gap:6px; margin-top:6px; }
+  .range-custom { display:flex; flex-direction:column; gap:8px; margin-top:8px; padding:10px; background:var(--canvas); border:1px solid var(--border); border-radius:9px; }
   .range-custom[hidden] { display:none; }
-  .rc-lbl { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:11px; color:var(--text-faint); }
-  .rc-lbl input { flex:1; background:var(--canvas); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:11.5px; padding:2px 6px; color-scheme:light dark; }
-  .rc-apply { font-size:11.5px; padding:4px 0; border-radius:7px; background:var(--raise); color:var(--text); border:1px solid var(--border); cursor:pointer; }
+  .rc-lbl { display:flex; flex-direction:column; gap:3px; font-size:9.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-faint); }
+  .rc-lbl input { width:100%; box-sizing:border-box; background:var(--panel); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12.5px; font-family:var(--mono); padding:5px 8px; color-scheme:dark; }
+  .rc-lbl input:focus { outline:none; border-color:var(--amber); }
+  .rc-lbl input::-webkit-calendar-picker-indicator { filter:invert(.65) sepia(1) saturate(2) hue-rotate(2deg); cursor:pointer; }
+  .rc-apply { font-size:11.5px; padding:5px 0; margin-top:2px; border-radius:7px; background:var(--amber); color:#241f17; font-weight:600; border:1px solid var(--amber); cursor:pointer; }
   .rc-apply:hover { background:var(--amber); color:#241f17; border-color:var(--amber); }
   /* Icon rail (html.nav-rail): hide labels/sections, center the glyphs. */
   .rail-toggle { background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:14px; line-height:1; padding:2px 5px; border-radius:6px; }
+  .rail-toggle::before { content:"«"; }
+  :global(html.nav-rail) .rail-toggle::before { content:"»"; }
   .rail-toggle:hover { color:var(--text); background:var(--panel-2); }
   .lib-item .ico { width:18px; text-align:center; flex:none; }
   :global(html.nav-rail) .rail-hide, :global(html.nav-rail) .lbl-t { display:none !important; }
