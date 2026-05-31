@@ -1,34 +1,20 @@
 ---
 import AppShell from "../layouts/AppShell.astro";
 import Sidebar from "../components/Sidebar.astro";
-import { capSessionsPerHub, type GraphData } from "../db/graph";
-import { getTopicGraphData } from "../db/topic-graph";
+import { type GraphData } from "../db/graph";
 import { getHierarchyGraphData } from "../db/hierarchy-graph";
 import { getDb } from "../db/init";
 import { getLibraryTree, type LibraryTree } from "../db/library";
 
-// Two views only: the high-level "Topics" force graph, and the "Hierarchy" galaxy
-// (repo → folder → session, with topics bridging sessions as cross-cutting connectors).
-const view = Astro.url.searchParams.get("view") === "hierarchy" ? "hierarchy" : "topics";
-// Hierarchy only: topics overlay is ON by default; ?topics=0 collapses to the clean tree.
-const showTopics = Astro.url.searchParams.get("topics") !== "0";
-
-const SESSIONS_PER_HUB = 12;
+// One unified graph: the full repo → folder → session → topic dataset. All filtering
+// (which node types are shown) happens client-side via the floating control panel — no tabs.
 let dbError = "";
 let graph: GraphData = { nodes: [], links: [] };
 let tree: LibraryTree = { repos: [], totalCount: 0 };
-let droppedSessions = 0;
 
 const db = getDb();
 try {
-  if (view === "hierarchy") {
-    graph = getHierarchyGraphData(db, { includeTopics: showTopics });
-  } else {
-    // Bound the topic payload so the force sim stays smooth; hubs keep their full counts.
-    const capped = capSessionsPerHub(getTopicGraphData(db), SESSIONS_PER_HUB);
-    graph = capped.data;
-    droppedSessions = capped.droppedSessions;
-  }
+  graph = getHierarchyGraphData(db, { includeTopics: true });
   tree = getLibraryTree(db);
 } catch (e) {
   dbError = e instanceof Error ? e.message : String(e);
@@ -36,25 +22,16 @@ try {
 
 const count = (t: string) => graph.nodes.filter((n) => n.type === t).length;
 
-// Color legend chips — same warm hues the renderer paints, per node type in the active tab.
-// repo green · folder/workdir orange · session violet · topic amber.
-type Chip = { color: string; label: string; n: number };
-const legend: Chip[] =
-  view === "hierarchy"
-    ? [
-        { color: "#7fae7a", label: "repos", n: count("repo") },
-        { color: "#cf9152", label: "folders", n: count("workdir") },
-        { color: "#9b82d6", label: "sessions", n: count("session") },
-        ...(showTopics ? [{ color: "#d2a85f", label: "topics", n: count("topic") }] : []),
-      ]
-    : [
-        { color: "#d2a85f", label: "topics", n: count("topic") },
-        { color: "#9b82d6", label: "sessions", n: count("session") },
-      ];
+// Control-panel rows = legend + toggle in one. Same warm hues the renderer paints.
+const types = [
+  { type: "repo", label: "Repos", color: "#7fae7a", n: count("repo") },
+  { type: "workdir", label: "Folders", color: "#cf9152", n: count("workdir") },
+  { type: "session", label: "Sessions", color: "#9b82d6", n: count("session") },
+  { type: "topic", label: "Topics", color: "#d2a85f", n: count("topic") },
+];
 
 // Passed to the client via a hidden element's data-* attribute (Astro escapes it).
-// Avoids a <script type="application/json"> tag, which Vite's dev dependency
-// scanner mis-parses (it inlines the frontmatter and chokes).
+// Avoids a <script type="application/json"> tag, which Vite's dev dependency scanner chokes on.
 const graphJson = JSON.stringify(graph);
 ---
 <AppShell title="ccaudit — graph">
@@ -65,27 +42,9 @@ const graphJson = JSON.stringify(graph);
       <strong>Couldn't load graph data:</strong> {dbError} — run <span class="font-mono-w">ccaudit reindex</span>.
     </div>
   )}
-  {droppedSessions > 0 && (
-    <div class="text-[11.5px] mb-2" style="color:var(--text-faint);">Showing up to {SESSIONS_PER_HUB} recent sessions per topic — {droppedSessions.toLocaleString()} collapsed. Click a topic to open its full list.</div>
-  )}
-
-  <div class="flex items-center justify-between mb-3 flex-wrap gap-y-2 gap-x-4">
-    <h1 class="font-serif text-2xl font-semibold" style="color:var(--text);">Graph</h1>
-    <div class="flex items-center gap-3.5 text-sm flex-wrap" style="color:var(--text-dim);">
-      {legend.map((c) => (
-        <span class="flex items-center gap-1.5">
-          <span class="inline-block w-3 h-3 rounded-full" style={`background:${c.color};`}></span>
-          {c.n} {c.label}
-        </span>
-      ))}
-    </div>
-  </div>
 
   <div class="flex items-center gap-3 mb-3 flex-wrap">
-    <div class="inline-flex rounded-lg overflow-hidden text-sm" style="border:1px solid var(--border);">
-      <a href="/graph?view=topics" class="gtab" data-on={view === "topics"}>Topics</a>
-      <a href="/graph?view=hierarchy" class="gtab" data-on={view === "hierarchy"} style="border-left:1px solid var(--border);">Hierarchy</a>
-    </div>
+    <h1 class="font-serif text-2xl font-semibold mr-1" style="color:var(--text);">Graph</h1>
     <input
       id="graph-search"
       type="search"
@@ -93,12 +52,6 @@ const graphJson = JSON.stringify(graph);
       class="px-3 py-1.5 text-sm rounded-lg w-64 focus:outline-none"
       style="background:var(--panel); border:1px solid var(--border); color:var(--text);"
     />
-    {view === "hierarchy" && (
-      <label class="flex items-center gap-2 text-sm cursor-pointer select-none" style="color:var(--text-dim);">
-        <input id="graph-show-topics" type="checkbox" class="rounded" checked={showTopics} />
-        Show topics
-      </label>
-    )}
     <span class="text-sm ml-auto hidden sm:inline" style="color:var(--text-faint);">drag · scroll to zoom · hover to focus · click to open</span>
   </div>
 
@@ -108,6 +61,23 @@ const graphJson = JSON.stringify(graph);
     style="background:radial-gradient(ellipse 82% 72% at 50% 42%, var(--panel-2) 0%, var(--panel) 55%, var(--canvas) 100%); border:1px solid var(--border-soft);"
   >
     <svg id="graph-svg" width="100%" height="100%" style="display:block; cursor:grab;"></svg>
+
+    <!-- Obsidian-style floating control panel: legend + per-type visibility toggle. -->
+    <div id="graph-panel" class="graph-panel">
+      <button id="panel-head" class="panel-head" type="button" aria-label="Toggle display panel">
+        <span>Display</span><span id="panel-chev" class="chev">▾</span>
+      </button>
+      <div id="panel-body" class="panel-body">
+        {types.map((t) => (
+          <button class="ptype" data-type={t.type} data-on="true" type="button">
+            <span class="pdot" style={`--c:${t.color}`}></span>
+            <span class="plabel">{t.label}</span>
+            <span class="pcount">{t.n}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+
     <div
       id="graph-tooltip"
       class="pointer-events-none absolute hidden z-10 rounded-lg shadow-lg max-w-xs"
@@ -122,7 +92,7 @@ const graphJson = JSON.stringify(graph);
     </button>
   </div>
 
-  <div id="graph-data" data-graph={graphJson} data-view={view} hidden></div>
+  <div id="graph-data" data-graph={graphJson} hidden></div>
 
   <script>
     // @ts-nocheck — client-side d3 viz glue; types relaxed for brevity.
@@ -130,10 +100,9 @@ const graphJson = JSON.stringify(graph);
     import { select } from "d3-selection";
     import { zoom, zoomIdentity } from "d3-zoom";
     import { drag } from "d3-drag";
+    import { filterGraphByTypes } from "../lib/graph-filter";
 
-    const dataEl = document.getElementById("graph-data");
-    const data = JSON.parse(dataEl.dataset.graph);
-    const view = dataEl.dataset.view;
+    const fullData = JSON.parse(document.getElementById("graph-data").dataset.graph);
     const container = document.getElementById("graph-container");
     const svgEl = document.getElementById("graph-svg");
     const tooltip = document.getElementById("graph-tooltip");
@@ -147,67 +116,50 @@ const graphJson = JSON.stringify(graph);
       repo:    { color: "#7fae7a", hub: true,  glow: true,  r: (d) => 10 + Math.sqrt(d.workdirCount || 1) * 4 },
       topic:   { color: "#d2a85f", hub: true,  glow: true,  r: (d) => 9 + Math.sqrt(d.sessionCount || 1) * 4.5 },
       workdir: { color: "#cf9152", hub: true,  glow: true,  r: () => 7 },
-      folder:  { color: "#cf9152", hub: true,  glow: true,  r: (d) => 7 + Math.sqrt(d.projectCount || 1) * 2 },
-      project: { color: "#cf9152", hub: true,  glow: false, r: () => 6 },
       session: { color: "#9b82d6", hub: false, glow: false, r: (d) => 2.6 + Math.sqrt(d.messageCount || 1) * 0.22 },
     };
     const ts = (d) => TYPE[d.type] || TYPE.session;
     const labelDy = (d) => -ts(d).r(d) - 9;
+    const AMBER = "#d2a85f";
 
-    // Search-highlight state. Declared up here because the label .text() callback below runs
-    // immediately during render and reads searchQuery — a later `let` would be in its TDZ.
+    // Search-highlight state — declared up here because the label .text() callback reads it
+    // at render time (a later `let` would be in its TDZ).
     let searchQuery = "";
 
     const svg = select(svgEl);
     const root = svg.append("g");
-
-    const zoomBehavior = zoom()
-      .scaleExtent([0.1, 6])
-      .on("zoom", (event) => root.attr("transform", event.transform));
+    const zoomBehavior = zoom().scaleExtent([0.1, 6]).on("zoom", (e) => root.attr("transform", e.transform));
     svg.call(zoomBehavior);
 
-    // Soft glow for hubs.
+    // Soft glow for hubs (on the svg defs, persists across rebuilds).
     const defs = svg.append("defs");
     const f = defs.append("filter").attr("id", "glow").attr("x", "-70%").attr("y", "-70%").attr("width", "240%").attr("height", "240%");
     f.append("feGaussianBlur").attr("stdDeviation", "5").attr("result", "b");
     const fm = f.append("feMerge"); fm.append("feMergeNode").attr("in", "b"); fm.append("feMergeNode").attr("in", "SourceGraphic");
 
-    const AMBER = "#d2a85f";
+    // --- Visibility state (persisted, Obsidian-style) ---
+    const ALL_TYPES = ["repo", "workdir", "session", "topic"];
+    const LS_KEY = "ccaudit.graph.visibleTypes";
+    function loadVisible() {
+      try {
+        const a = JSON.parse(localStorage.getItem(LS_KEY));
+        if (Array.isArray(a) && a.length) return new Set(a.filter((t) => ALL_TYPES.includes(t)));
+      } catch {}
+      return new Set(ALL_TYPES);
+    }
+    const visible = loadVisible();
+    const saveVisible = () => { try { localStorage.setItem(LS_KEY, JSON.stringify([...visible])); } catch {} };
 
-    // Curved (faint amber) links.
-    const link = root.append("g").selectAll("path").data(data.links).join("path")
-      .attr("fill", "none").attr("stroke", AMBER).attr("stroke-opacity", 0.14).attr("stroke-width", 1);
+    // --- Selections + sim, rebuilt on each toggle ---
+    let link, node, label, sim, curLinks;
 
-    // Nodes: halo (hubs) + core circle + serif label.
-    const node = root.append("g").selectAll("g").data(data.nodes).join("g").style("cursor", "pointer");
-    node.filter((d) => ts(d).hub).append("circle").attr("class", "halo")
-      .attr("r", (d) => ts(d).r(d) + 7).attr("fill", (d) => ts(d).color).attr("fill-opacity", 0.16);
-    node.append("circle")
-      .attr("r", (d) => ts(d).r(d))
-      .attr("fill", (d) => ts(d).color)
-      .attr("fill-opacity", (d) => (ts(d).hub ? 1 : 0.62))
-      .attr("stroke", (d) => (ts(d).hub ? "#ecca8e" : "none")).attr("stroke-opacity", 0.35)
-      .attr("filter", (d) => (ts(d).glow ? "url(#glow)" : null));
-    const label = node.append("text").attr("class", "glabel")
-      .attr("text-anchor", "middle")
-      .attr("dy", labelDy)
-      .attr("font-size", (d) => (d.type === "session" ? 11 : 13.5))
-      .attr("font-weight", (d) => (ts(d).hub ? 600 : 400))
-      .style("paint-order", "stroke")
-      .style("pointer-events", "none")
-      .text((d) => labelText(d));
-
-    // --- Search-highlight helpers + hover-persistence fix ---
-    // The active "Highlight nodes…" query (searchQuery, declared above) is the resting state:
-    // while it's set, only matches stay bright and hovering must not relight the rest
-    // (mouse-out just restores this state).
     function truncate(s, n) { return s && s.length > n ? s.slice(0, n - 1) + "…" : s || ""; }
     function labelText(d) {
       if (ts(d).hub) return d.label;
-      // sessions (non-hubs): labelled only while they match the active query
       return searchQuery && d.label.toLowerCase().includes(searchQuery) ? truncate(d.label, 40) : "";
     }
     function applyHighlight() {
+      if (!node) return;
       if (!searchQuery) {
         node.style("opacity", 1);
         link.style("stroke-opacity", 0.14);
@@ -216,108 +168,109 @@ const graphJson = JSON.stringify(graph);
         link.style("stroke-opacity", 0.04);
       }
     }
-
-    // Neighbor lookup for hover-focus (built from links; endpoints are node objects post-sim).
     function neighbors(d) {
       const s = new Set([d.id]);
-      data.links.forEach((l) => {
+      curLinks.forEach((l) => {
         const sid = l.source.id ?? l.source, tid = l.target.id ?? l.target;
         if (sid === d.id) s.add(tid);
         if (tid === d.id) s.add(sid);
       });
       return s;
     }
-
-    node
-      .on("mouseover", function (event, d) {
-        // Hover-focus only when no active search — otherwise leave the filter intact.
-        if (!searchQuery) {
-          const nb = neighbors(d);
-          node.style("opacity", (o) => (nb.has(o.id) ? 1 : 0.12));
-          link.style("stroke-opacity", (l) => {
-            const sid = l.source.id ?? l.source, tid = l.target.id ?? l.target;
-            return sid === d.id || tid === d.id ? 0.55 : 0.03;
-          });
-        }
-        // Reveal this node's label (sessions have none at rest).
-        select(this).select("text").text(truncate(d.label, 48)).attr("font-weight", 700);
-        let meta;
-        if (d.type === "topic") meta = `topic · ${d.sessionCount} session${d.sessionCount === 1 ? "" : "s"}`;
-        else if (d.type === "repo") meta = `repo · ${d.workdirCount} folder${d.workdirCount === 1 ? "" : "s"}${d.remote ? ` · ${d.remote}` : ""}`;
-        else if (d.type === "workdir") meta = `${d.existsOnDisk === false ? "⚠ deleted · " : "folder · "}${d.workdirPath || ""}`;
-        else meta = `${d.messageCount || 0} msg${d.messageCount === 1 ? "" : "s"}${d.compactCount > 0 ? ` · ${d.compactCount} compact` : ""}`;
-        tooltip.innerHTML = `<div style="font-weight:600;color:var(--text);">${truncate(d.label, 80)}</div><div style="color:var(--text-dim);font-size:11.5px;word-break:break-all;">${truncate(meta, 120)}</div>`;
-        tooltip.classList.remove("hidden");
-      })
-      .on("mousemove", function (event) {
-        const rect = container.getBoundingClientRect();
-        tooltip.style.left = event.clientX - rect.left + 14 + "px";
-        tooltip.style.top = event.clientY - rect.top + 14 + "px";
-      })
-      .on("mouseout", function (event, d) {
-        applyHighlight(); // restore the search-filtered state (or full, if no query) — not "all bright"
-        select(this).select("text").text(labelText(d)).attr("font-weight", ts(d).hub ? 600 : 400);
-        tooltip.classList.add("hidden");
-      })
-      .on("click", (event, d) => {
-        if (event.defaultPrevented) return;
-        if (d.type === "session") window.location.href = "/s/" + d.sessionId;
-        else if (d.type === "topic") window.location.href = "/?topic=" + d.id.slice(6);
-        else if (d.type === "repo") window.location.href = "/?repo=" + encodeURIComponent(d.id.slice(5));
-        else if (d.type === "workdir") window.location.href = "/?workdir=" + encodeURIComponent(d.workdirPath || d.id.slice(9));
-        // folder click (if ever present): no-op (visual grouping)
-      });
-
-    // Force simulation.
-    const sim = forceSimulation(data.nodes)
-      .force("charge", forceManyBody().strength((d) => (ts(d).hub ? -300 : -22)))
-      .force("link", forceLink(data.links).id((d) => d.id)
-        .distance((l) => (l.kind === "session-topic" ? 70 : l.kind === "workdir-repo" ? 55 : 40)).strength(0.5))
-      .force("x", forceX(() => width / 2).strength(0.05))
-      .force("y", forceY(() => height / 2).strength(0.06))
-      .force("collide", forceCollide((d) => ts(d).r(d) + (ts(d).hub ? 14 : 2)));
-
     const curve = (d) => {
       const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
       const dr = Math.hypot(dx, dy) * 1.6;
       return `M${d.source.x},${d.source.y}A${dr},${dr} 0 0,1 ${d.target.x},${d.target.y}`;
     };
-    const draw = () => {
-      link.attr("d", curve);
-      node.attr("transform", (d) => `translate(${d.x},${d.y})`);
-    };
-    // Settle synchronously (d3 tick() doesn't fire "tick" events), draw once, then frame it.
-    for (let i = 0; i < 300; i++) sim.tick();
-    sim.stop();
-    draw();
-    fitView(0);
-    sim.on("tick", draw); // keep drawing during drag
 
-    // Drag.
-    node.call(
-      drag()
-        .on("start", (event, d) => { if (!event.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
-        .on("drag", (event, d) => { d.fx = event.x; d.fy = event.y; })
-        .on("end", (event, d) => { if (!event.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
-    );
+    function build(animate) {
+      const filtered = filterGraphByTypes(fullData, visible);
+      curLinks = filtered.links;
+      root.selectAll("*").remove();
 
-    // In-graph search: highlight matching node labels, dim the rest.
-    const searchInput = document.getElementById("graph-search");
-    searchInput.addEventListener("input", () => {
-      searchQuery = searchInput.value.trim().toLowerCase();
+      link = root.append("g").selectAll("path").data(curLinks).join("path")
+        .attr("fill", "none").attr("stroke", AMBER).attr("stroke-opacity", 0.14).attr("stroke-width", 1);
+
+      node = root.append("g").selectAll("g").data(filtered.nodes, (d) => d.id).join("g").style("cursor", "pointer");
+      node.filter((d) => ts(d).hub).append("circle").attr("r", (d) => ts(d).r(d) + 7)
+        .attr("fill", (d) => ts(d).color).attr("fill-opacity", 0.16);
+      node.append("circle")
+        .attr("r", (d) => ts(d).r(d))
+        .attr("fill", (d) => ts(d).color)
+        .attr("fill-opacity", (d) => (ts(d).hub ? 1 : 0.62))
+        .attr("stroke", (d) => (ts(d).hub ? "#ecca8e" : "none")).attr("stroke-opacity", 0.35)
+        .attr("filter", (d) => (ts(d).glow ? "url(#glow)" : null));
+      label = node.append("text").attr("class", "glabel")
+        .attr("text-anchor", "middle").attr("dy", labelDy)
+        .attr("font-size", (d) => (d.type === "session" ? 11 : 13.5))
+        .attr("font-weight", (d) => (ts(d).hub ? 600 : 400))
+        .style("paint-order", "stroke").style("pointer-events", "none")
+        .text((d) => labelText(d));
+
+      node
+        .on("mouseover", function (event, d) {
+          if (!searchQuery) {
+            const nb = neighbors(d);
+            node.style("opacity", (o) => (nb.has(o.id) ? 1 : 0.12));
+            link.style("stroke-opacity", (l) => {
+              const sid = l.source.id ?? l.source, tid = l.target.id ?? l.target;
+              return sid === d.id || tid === d.id ? 0.55 : 0.03;
+            });
+          }
+          select(this).select("text").text(truncate(d.label, 48)).attr("font-weight", 700);
+          let meta;
+          if (d.type === "topic") meta = `topic · ${d.sessionCount} session${d.sessionCount === 1 ? "" : "s"}`;
+          else if (d.type === "repo") meta = `repo · ${d.workdirCount} folder${d.workdirCount === 1 ? "" : "s"}${d.remote ? ` · ${d.remote}` : ""}`;
+          else if (d.type === "workdir") meta = `${d.existsOnDisk === false ? "⚠ deleted · " : "folder · "}${d.workdirPath || ""}`;
+          else meta = `${d.messageCount || 0} msg${d.messageCount === 1 ? "" : "s"}${d.compactCount > 0 ? ` · ${d.compactCount} compact` : ""}`;
+          tooltip.innerHTML = `<div style="font-weight:600;color:var(--text);">${truncate(d.label, 80)}</div><div style="color:var(--text-dim);font-size:11.5px;word-break:break-all;">${truncate(meta, 120)}</div>`;
+          tooltip.classList.remove("hidden");
+        })
+        .on("mousemove", function (event) {
+          const rect = container.getBoundingClientRect();
+          tooltip.style.left = event.clientX - rect.left + 14 + "px";
+          tooltip.style.top = event.clientY - rect.top + 14 + "px";
+        })
+        .on("mouseout", function (event, d) {
+          applyHighlight();
+          select(this).select("text").text(labelText(d)).attr("font-weight", ts(d).hub ? 600 : 400);
+          tooltip.classList.add("hidden");
+        })
+        .on("click", (event, d) => {
+          if (event.defaultPrevented) return;
+          if (d.type === "session") window.location.href = "/s/" + d.sessionId;
+          else if (d.type === "topic") window.location.href = "/?topic=" + d.id.slice(6);
+          else if (d.type === "repo") window.location.href = "/?repo=" + encodeURIComponent(d.id.slice(5));
+          else if (d.type === "workdir") window.location.href = "/?workdir=" + encodeURIComponent(d.workdirPath || d.id.slice(9));
+        })
+        .call(drag()
+          .on("start", (event, d) => { if (!event.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+          .on("drag", (event, d) => { d.fx = event.x; d.fy = event.y; })
+          .on("end", (event, d) => { if (!event.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+      sim = forceSimulation(filtered.nodes)
+        .force("charge", forceManyBody().strength((d) => (ts(d).hub ? -300 : -22)))
+        .force("link", forceLink(curLinks).id((d) => d.id)
+          .distance((l) => (l.kind === "session-topic" ? 70 : l.kind === "workdir-repo" || l.kind === "session-repo" ? 55 : 40)).strength(0.5))
+        .force("x", forceX(() => width / 2).strength(0.05))
+        .force("y", forceY(() => height / 2).strength(0.06))
+        .force("collide", forceCollide((d) => ts(d).r(d) + (ts(d).hub ? 14 : 2)));
+
+      const draw = () => { link.attr("d", curve); node.attr("transform", (d) => `translate(${d.x},${d.y})`); };
+      sim.on("tick", draw);
+      if (animate) {
+        sim.alpha(0.9).restart();
+        sim.on("end", () => fitView(450));
+        setTimeout(() => fitView(450), 1500);
+      } else {
+        for (let i = 0; i < 300; i++) sim.tick();
+        sim.stop();
+        draw();
+        fitView(0);
+      }
       applyHighlight();
-      label.text(labelText); // reveal matching session labels; hide the rest
-    });
-
-    // "Show topics" toggle (hierarchy only) — navigates with the topics flag.
-    const topicsToggle = document.getElementById("graph-show-topics");
-    if (topicsToggle) {
-      topicsToggle.addEventListener("change", (e) => {
-        window.location.href = "/graph?view=hierarchy" + (e.target.checked ? "" : "&topics=0");
-      });
     }
 
-    // Zoom-to-fit: frame everything (nodes + labels) within the canvas.
     function fitView(ms) {
       const bb = root.node().getBBox();
       if (!bb.width || !bb.height) return;
@@ -327,20 +280,62 @@ const graphJson = JSON.stringify(graph);
       const ty = height / 2 - k * (bb.y + bb.height / 2);
       svg.transition().duration(ms ?? 500).call(zoomBehavior.transform, zoomIdentity.translate(tx, ty).scale(k));
     }
-    document.getElementById("graph-reset").addEventListener("click", () => fitView(500));
 
-    // Resize: re-center the cooling forces.
+    // --- Control panel wiring ---
+    const rows = [...document.querySelectorAll(".ptype")];
+    const syncRow = (row) => row.setAttribute("data-on", visible.has(row.dataset.type) ? "true" : "false");
+    rows.forEach((row) => {
+      syncRow(row); // reflect persisted state
+      row.addEventListener("click", () => {
+        const t = row.dataset.type;
+        if (visible.has(t)) visible.delete(t); else visible.add(t);
+        syncRow(row);
+        saveVisible();
+        build(true);
+      });
+    });
+
+    const panel = document.getElementById("graph-panel");
+    const PANEL_LS = "ccaudit.graph.panelCollapsed";
+    if (localStorage.getItem(PANEL_LS) === "1") panel.classList.add("collapsed");
+    document.getElementById("panel-head").addEventListener("click", () => {
+      panel.classList.toggle("collapsed");
+      try { localStorage.setItem(PANEL_LS, panel.classList.contains("collapsed") ? "1" : "0"); } catch {}
+    });
+
+    // Search (rebound to the current selection each time it fires).
+    const searchInput = document.getElementById("graph-search");
+    searchInput.addEventListener("input", () => {
+      searchQuery = searchInput.value.trim().toLowerCase();
+      applyHighlight();
+      if (label) label.text(labelText);
+    });
+
+    document.getElementById("graph-reset").addEventListener("click", () => fitView(500));
     window.addEventListener("resize", () => {
       width = container.clientWidth;
       height = container.clientHeight;
-      sim.alpha(0.2).restart();
+      if (sim) sim.alpha(0.2).restart();
     });
+
+    build(false); // initial render
   </script>
   </div>
   <style>
-    .gtab { padding:6px 12px; background:var(--panel); color:var(--text-dim); text-decoration:none; }
-    .gtab:hover { background:var(--panel-2); color:var(--text); }
-    .gtab[data-on="true"] { background:var(--amber); color:#241f17; font-weight:600; }
+    .graph-panel { position:absolute; top:12px; right:12px; z-index:10; width:188px; background:color-mix(in srgb, var(--panel) 88%, transparent); border:1px solid var(--border); border-radius:12px; box-shadow:0 12px 34px rgba(0,0,0,.35); backdrop-filter:blur(8px); overflow:hidden; font-size:13px; }
+    .panel-head { display:flex; align-items:center; justify-content:space-between; width:100%; padding:8px 12px; background:transparent; border:0; cursor:pointer; color:var(--text-dim); font-weight:600; letter-spacing:.02em; }
+    .panel-head:hover { color:var(--text); }
+    .chev { transition:transform .18s ease; font-size:11px; }
+    .graph-panel.collapsed .panel-body { display:none; }
+    .graph-panel.collapsed .chev { transform:rotate(-90deg); }
+    .panel-body { padding:4px; display:flex; flex-direction:column; gap:1px; border-top:1px solid var(--border-soft); }
+    .ptype { display:flex; align-items:center; gap:9px; width:100%; padding:6px 8px; background:transparent; border:0; border-radius:8px; cursor:pointer; transition:background .12s, opacity .12s; }
+    .ptype:hover { background:var(--panel-2); }
+    .pdot { width:11px; height:11px; border-radius:999px; background:var(--c); flex:none; }
+    .plabel { color:var(--text); flex:1; text-align:left; }
+    .pcount { color:var(--text-faint); font-variant-numeric:tabular-nums; font-size:12px; }
+    .ptype[data-on="false"] { opacity:.42; }
+    .ptype[data-on="false"] .pdot { background:transparent; box-shadow:inset 0 0 0 2px var(--c); }
     /* Serif labels — adapt to theme (light text + canvas-colored stroke for legibility). */
     :global(#graph-svg .glabel) {
       font-family: Georgia, "Times New Roman", serif;

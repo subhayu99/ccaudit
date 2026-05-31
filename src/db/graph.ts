@@ -8,6 +8,7 @@ export type GraphLinkKind =
   | "continuation"
   | "session-workdir"
   | "workdir-repo"
+  | "session-repo"
   | "session-topic";
 
 export type GraphNode = {
