@@ -5,6 +5,7 @@ import { getDb } from "../db/init";
 import { searchMessages, searchMessagesExact, searchMessagesRegex } from "../db/messages";
 import { getSessionsByIds } from "../db/sessions";
 import { getLibraryTree } from "../db/library";
+import { resolveRange } from "../db/date-range";
 import { formatTimestamp } from "../lib/render";
 import type { Session } from "../types";
 
@@ -17,14 +18,15 @@ let groups: SGroup[] = [];
 let totalHits = 0;
 let searchError = "";
 
+const range = resolveRange(Astro.cookies.get("ccaudit-range")?.value, Date.now());
 const db = getDb();
-const tree = getLibraryTree(db);
+const tree = getLibraryTree(db, range);
 if (query) {
   try {
     const raw =
-      mode === "exact" ? searchMessagesExact(db, query, { limit: 200 })
-      : mode === "regex" ? searchMessagesRegex(db, query, { limit: 200 })
-      : searchMessages(db, query, { limit: 200 });
+      mode === "exact" ? searchMessagesExact(db, query, { limit: 200, range })
+      : mode === "regex" ? searchMessagesRegex(db, query, { limit: 200, range })
+      : searchMessages(db, query, { limit: 200, range });
     totalHits = raw.length;
     const sessions = getSessionsByIds(db, raw.map((h) => h.sessionId));
     // Group by session, preserving best-rank session order; lines sorted chronologically.

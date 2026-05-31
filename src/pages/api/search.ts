@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { getDb } from "../../db/init.js";
 import { searchMessages } from "../../db/messages.js";
 import { getSessionsByIds } from "../../db/sessions.js";
+import { resolveRange } from "../../db/date-range.js";
 
 function json(obj: unknown, status = 200): Response {
   return new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
@@ -14,12 +15,13 @@ const HIT_LIMIT = 120; // total matched lines pulled; grouped client-side into c
  * session's title + a short path label so the palette can render collapsible groups without
  * needing the session in its (capped) jump-index. Mirrors the /search page's full-text behavior.
  */
-export const GET: APIRoute = ({ url }) => {
+export const GET: APIRoute = ({ url, cookies }) => {
   const q = (url.searchParams.get("q") ?? "").trim();
   if (q.length < 2) return json({ q, total: 0, groups: [] });
   try {
     const db = getDb();
-    const hits = searchMessages(db, q, { limit: HIT_LIMIT, match: "all" });
+    const range = resolveRange(cookies.get("ccaudit-range")?.value, Date.now());
+    const hits = searchMessages(db, q, { limit: HIT_LIMIT, match: "all", range });
     if (hits.length === 0) return json({ q, total: 0, groups: [] });
 
     const sessions = getSessionsByIds(db, hits.map((h) => h.sessionId));

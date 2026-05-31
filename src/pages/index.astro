@@ -7,6 +7,7 @@ import CommandPalette from "../components/CommandPalette.astro";
 import Dashboard from "../components/Dashboard.astro";
 import { getDb } from "../db/init";
 import { getLibraryTree, listSessionsGrouped, type Selection, type LibraryTree, type SortMode } from "../db/library";
+import { resolveRange } from "../db/date-range";
 import { listTopics, getTopic } from "../db/topics";
 import DbErrorPanel from "../components/DbErrorPanel.astro";
 
@@ -28,9 +29,11 @@ let list: ReturnType<typeof listSessionsGrouped> = { header: { title: "", subtit
 let selParams = "";
 let paletteItems: Array<{ label: string; sub: string; href: string; kind: string }> = [];
 
+const range = resolveRange(Astro.cookies.get("ccaudit-range")?.value, Date.now());
+
 const db = getDb();
 try {
-  tree = getLibraryTree(db);
+  tree = getLibraryTree(db, range);
   topics = listTopics(db);
   const topic = topicId !== undefined ? getTopic(db, topicId) : null;
   const sel: Selection = repo

@@ -4,6 +4,7 @@ import { computeRepoComponents } from "../identity/components.js";
 import { listExclusions, sessionKeepCondition } from "./exclusions.js";
 import { cleanPromptText } from "../lib/clean-prompt.js";
 import { sessionCostUsd, type TokenUsage } from "../lib/pricing.js";
+import { rangeCondition, type DateRange } from "./date-range.js";
 
 function parseTokenUsage(raw: string | null): TokenUsage | null {
   if (!raw) return null;
@@ -85,31 +86,33 @@ function libraryTreeKey(db: Database.Database): string {
   return `${meta.maxIndexedAt ?? ""}|${meta.sessionCount}|${exclusionsSig}`;
 }
 
-export function getLibraryTree(db: Database.Database): LibraryTree {
-  const key = libraryTreeKey(db);
+export function getLibraryTree(db: Database.Database, range: DateRange | null = null): LibraryTree {
+  // Range participates in the cache key so a filtered tree never gets served for "all time".
+  const key = `${libraryTreeKey(db)}|${range ? `${range.from}-${range.to}` : "all"}`;
   const cached = treeCache.get(db);
   if (cached && cached.key === key) return cached.tree;
 
-  const tree = buildLibraryTree(db);
+  const tree = buildLibraryTree(db, range);
   treeCache.set(db, { key, tree });
   return tree;
 }
 
-function buildLibraryTree(db: Database.Database): LibraryTree {
+function buildLibraryTree(db: Database.Database, range: DateRange | null): LibraryTree {
   const workdirs = listWorkdirs(db);
   const { repos, repoByPath } = computeRepoComponents(workdirs);
   const existsByPath = new Map(workdirs.map((w) => [w.path, w.existsOnDisk]));
 
   const excl = sessionKeepCondition(db);
+  const rg = rangeCondition(range, "last_activity");
   const rows = db
     .prepare(
       `SELECT id, cwd, ai_title, first_prompt, last_activity AS last_activity,
               message_count AS message_count, compact_count AS compact_count, token_usage
          FROM sessions
-        WHERE cwd IS NOT NULL AND ${excl.sql}
+        WHERE cwd IS NOT NULL AND ${excl.sql} AND ${rg.sql}
         ORDER BY last_activity DESC`
     )
-    .all(excl.params) as LibRow[];
+    .all({ ...excl.params, ...rg.params }) as LibRow[];
 
   // group sessions by workdir path
   const byWorkdir = new Map<string, LibrarySession[]>();

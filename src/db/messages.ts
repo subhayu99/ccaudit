@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import type { MessageRow, SearchHit } from "../types.js";
 import { sessionKeepCondition } from "./exclusions.js";
+import { rangeCondition, type DateRange } from "./date-range.js";
 
 type MessageRowSql = {
   session_id: string;
@@ -124,7 +125,7 @@ export function escapeFtsQueryAny(query: string): string {
 export function searchMessages(
   db: Database.Database,
   query: string,
-  opts: { limit?: number; match?: "all" | "any"; types?: string[] } = {}
+  opts: { limit?: number; match?: "all" | "any"; types?: string[]; range?: DateRange | null } = {}
 ): SearchHit[] {
   const limit = opts.limit ?? 50;
   const ftsQuery = opts.match === "any" ? escapeFtsQueryAny(query) : escapeFtsQuery(query);
@@ -134,6 +135,10 @@ export function searchMessages(
   // otherwise force a per-row scan of the full sessions id-set for nothing.
   const exclClause =
     excl.sql === "1" ? "" : `AND m.session_id IN (SELECT id FROM sessions WHERE ${excl.sql})`;
+  // Global date-range filter (same shape): restrict to sessions whose activity is in-window.
+  const rg = rangeCondition(opts.range ?? null, "last_activity");
+  const rangeClause =
+    rg.sql === "1" ? "" : `AND m.session_id IN (SELECT id FROM sessions WHERE ${rg.sql})`;
   // Optional message-type restriction (types are code-controlled, safe to inline).
   const typeClause =
     opts.types && opts.types.length
@@ -150,11 +155,12 @@ export function searchMessages(
          JOIN messages m ON m.rowid = messages_fts.rowid
         WHERE messages_fts MATCH @q
           ${exclClause}
+          ${rangeClause}
           ${typeClause}
         ORDER BY rank ASC
         LIMIT @limit`
     )
-    .all({ q: ftsQuery, limit, ...excl.params }) as Array<{
+    .all({ q: ftsQuery, limit, ...excl.params, ...rg.params }) as Array<{
     sessionId: string;
     lineNo: number;
     snippet: string;
@@ -180,12 +186,15 @@ function contextSnippet(text: string, query: string, contextChars = 80): string 
 export function searchMessagesExact(
   db: Database.Database,
   query: string,
-  opts: { limit?: number } = {}
+  opts: { limit?: number; range?: DateRange | null } = {}
 ): SearchHit[] {
   const limit = opts.limit ?? 50;
   const excl = sessionKeepCondition(db);
   const exclClause =
     excl.sql === "1" ? "" : `AND session_id IN (SELECT id FROM sessions WHERE ${excl.sql})`;
+  const rg = rangeCondition(opts.range ?? null, "last_activity");
+  const rangeClause =
+    rg.sql === "1" ? "" : `AND session_id IN (SELECT id FROM sessions WHERE ${rg.sql})`;
   const rows = db
     .prepare(
       `SELECT session_id AS sessionId,
@@ -194,10 +203,11 @@ export function searchMessagesExact(
          FROM messages
         WHERE text_content LIKE '%' || @q || '%' COLLATE NOCASE
           ${exclClause}
+          ${rangeClause}
         ORDER BY session_id, line_no
         LIMIT @limit`
     )
-    .all({ q: query, limit, ...excl.params }) as Array<{
+    .all({ q: query, limit, ...excl.params, ...rg.params }) as Array<{
     sessionId: string;
     lineNo: number;
     text: string;
@@ -213,7 +223,7 @@ export function searchMessagesExact(
 export function searchMessagesRegex(
   db: Database.Database,
   pattern: string,
-  opts: { limit?: number } = {}
+  opts: { limit?: number; range?: DateRange | null } = {}
 ): SearchHit[] {
   const limit = opts.limit ?? 50;
   let re: RegExp;
@@ -226,6 +236,9 @@ export function searchMessagesRegex(
   const excl = sessionKeepCondition(db);
   const exclClause =
     excl.sql === "1" ? "" : `AND session_id IN (SELECT id FROM sessions WHERE ${excl.sql})`;
+  const rg = rangeCondition(opts.range ?? null, "last_activity");
+  const rangeClause =
+    rg.sql === "1" ? "" : `AND session_id IN (SELECT id FROM sessions WHERE ${rg.sql})`;
   const rows = db
     .prepare(
       `SELECT session_id   AS sessionId,
@@ -235,10 +248,11 @@ export function searchMessagesRegex(
         WHERE text_content IS NOT NULL
           AND ccaudit_regexp(@pat, text_content) = 1
           ${exclClause}
+          ${rangeClause}
         ORDER BY session_id, line_no
         LIMIT @limit`
     )
-    .all({ pat: pattern, limit, ...excl.params }) as Array<{
+    .all({ pat: pattern, limit, ...excl.params, ...rg.params }) as Array<{
     sessionId: string;
     lineNo: number;
     text: string;

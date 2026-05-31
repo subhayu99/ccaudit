@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import type Database from "better-sqlite3";
 import { getDb } from "../../db/init.js";
+import { resolveRange, type DateRange } from "../../db/date-range.js";
 import { searchMessages } from "../../db/messages.js";
 import { getSessionsByIds } from "../../db/sessions.js";
 import { answerFromExcerpts, contentTerms, isLowSignalExcerpt, type AskExcerpt } from "../../labeling/ask.js";
@@ -17,9 +18,9 @@ const RAG_TYPES = ["user", "assistant"]; // skip tool output / attachments / met
 
 /** Retrieve relevant spans for a question: meaningful terms only (stopwords stripped), AND-first
  *  then OR-broaden, restricted to real turns, with file-dump noise filtered and sessions diversified. */
-function retrieve(db: Database.Database, q: string): { excerpts: AskExcerpt[]; sources: Source[] } {
+function retrieve(db: Database.Database, q: string, range: DateRange | null): { excerpts: AskExcerpt[]; sources: Source[] } {
   const cleaned = contentTerms(q).join(" ");
-  const opts = { limit: 30, types: RAG_TYPES };
+  const opts = { limit: 30, types: RAG_TYPES, range };
   let hits: SearchHit[] = cleaned ? searchMessages(db, cleaned, { ...opts, match: "all" }) : [];
   if (hits.length < 4) {
     // Too few precise matches — broaden to any-term (still only meaningful terms), append + dedup.
@@ -74,34 +75,38 @@ function store(q: string, e: CacheEntry): void {
   cache.set(keyOf(q), e);
 }
 
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async ({ request, cookies }) => {
   let body: { q?: unknown; mode?: unknown };
   try { body = await request.json(); } catch { body = {}; }
   const q = typeof body.q === "string" ? body.q.trim() : "";
   if (!q) return json({ error: "empty query" }, 400);
   const db = getDb();
+  // Honor the global date filter, and key the cache by range so answers don't bleed across windows.
+  const rangeToken = cookies.get("ccaudit-range")?.value ?? "all";
+  const range = resolveRange(rangeToken, Date.now());
+  const ck = rangeToken === "all" ? q : `${rangeToken}␟${q}`;
 
   // Phase 1: cheap retrieval, so the UI can show the matched chats while Claude is still thinking.
   if (body.mode === "retrieve") {
     try {
-      const { sources } = retrieve(db, q);
-      return json({ sources, cached: !!getFresh(q) });
+      const { sources } = retrieve(db, q, range);
+      return json({ sources, cached: !!getFresh(ck) });
     } catch (e) {
       return json({ error: e instanceof Error ? e.message : String(e) }, 400);
     }
   }
 
   // Phase 2: synthesize (served from cache when fresh).
-  const hit = getFresh(q);
+  const hit = getFresh(ck);
   if (hit) return json({ answer: hit.answer, sources: hit.sources, costUsd: 0, cached: true });
 
   try {
-    const { excerpts, sources } = retrieve(db, q);
+    const { excerpts, sources } = retrieve(db, q, range);
     if (excerpts.length === 0) {
       return json({ answer: "", sources: [], note: "No matching messages found in your history." });
     }
     const { answer, costUsd } = await answerFromExcerpts(q, excerpts);
-    store(q, { answer, sources, costUsd, at: Date.now() });
+    store(ck, { answer, sources, costUsd, at: Date.now() });
     return json({ answer, sources, costUsd, cached: false });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

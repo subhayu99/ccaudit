@@ -2,8 +2,13 @@
 // src/components/Sidebar.astro
 import type { LibraryTree } from "../db/library";
 import type { TopicSummary } from "../db/topics";
+import { rangeLabel } from "../db/date-range";
 interface Props { tree: LibraryTree; topics?: TopicSummary[]; activeRepo?: string; activeWorkdir?: string; activeTopic?: number; mode?: string; }
 const { tree, topics = [], activeRepo, activeWorkdir, activeTopic, mode } = Astro.props;
+// Global date-range filter (persisted in the ccaudit-range cookie). Scopes list/search/ask.
+const rangeToken = Astro.cookies.get("ccaudit-range")?.value ?? "all";
+const RANGES = [{ key: "all", label: "All" }, { key: "7d", label: "7d" }, { key: "30d", label: "30d" }, { key: "90d", label: "90d" }];
+const activeRange = RANGES.some((r) => r.key === rangeToken) ? rangeToken : "custom";
 ---
 <div id="topbar-progress" aria-hidden="true"></div>
 <div class="flex flex-col h-full" style="color:var(--text-dim);">
@@ -17,6 +22,15 @@ const { tree, topics = [], activeRepo, activeWorkdir, activeTopic, mode } = Astr
     <span>⚲</span><span>Search history…</span>
     <span class="ml-auto font-mono-w text-[11px] px-1.5 rounded" style="background:var(--raise); border:1px solid var(--border);">⌘K</span>
   </a>
+  <div class="px-3 mb-2">
+    <div class="flex items-center mb-1">
+      <span class="text-[10px] tracking-wider uppercase font-semibold" style="color:var(--text-faint);">Date range</span>
+      {activeRange === "custom" && <span class="ml-auto text-[10.5px] font-mono-w" style="color:var(--amber-bright);">{rangeLabel(rangeToken)}</span>}
+    </div>
+    <div class="range-row" id="range-ctl">
+      {RANGES.map((r) => <button type="button" class="rbtn" data-range={r.key} data-on={activeRange === r.key}>{r.label}</button>)}
+    </div>
+  </div>
   <nav class="px-2 overflow-y-auto flex-1">
     <div class="text-[10.5px] tracking-wider uppercase px-2.5 pt-3 pb-1.5 font-semibold" style="color:var(--text-faint);">Library</div>
     <a href="/?mode=recent" class="lib-item" data-active={mode === "recent"}>◷ Recent</a>
@@ -78,9 +92,21 @@ const { tree, topics = [], activeRepo, activeWorkdir, activeTopic, mode } = Astr
     const light = document.documentElement.classList.toggle("theme-light");
     try { localStorage.setItem("ccaudit-theme", light ? "light" : "dark"); } catch {}
   });
+
+  // Global date-range filter: persist in a cookie the server reads, then reload in place.
+  document.querySelectorAll("#range-ctl .rbtn").forEach((b) =>
+    b.addEventListener("click", () => {
+      const v = (b as HTMLElement).dataset.range || "all";
+      document.cookie = `ccaudit-range=${v}; path=/; max-age=31536000; samesite=lax`;
+      location.reload();
+    }));
 </script>
 
 <style>
+  .range-row { display:flex; gap:4px; }
+  .rbtn { flex:1; font-size:11.5px; padding:3px 0; text-align:center; border-radius:7px; background:var(--canvas); border:1px solid var(--border); color:var(--text-dim); cursor:pointer; }
+  .rbtn:hover { color:var(--text); }
+  .rbtn[data-on="true"] { background:var(--amber); color:#241f17; border-color:var(--amber); font-weight:600; }
   .lib-item { display:flex; align-items:center; gap:9px; padding:6px 10px; border-radius:7px; cursor:pointer; white-space:nowrap; font-size:14px; color:var(--text-dim); text-decoration:none; }
   .lib-item:hover { background:var(--panel-2); color:var(--text); }
   .lib-item[data-active="true"] { background:var(--raise); color:var(--text); }

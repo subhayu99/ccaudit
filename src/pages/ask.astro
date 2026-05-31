@@ -4,12 +4,14 @@ import Sidebar from "../components/Sidebar.astro";
 import DbErrorPanel from "../components/DbErrorPanel.astro";
 import { getDb } from "../db/init";
 import { getLibraryTree, type LibraryTree } from "../db/library";
+import { resolveRange } from "../db/date-range";
 
 const q = Astro.url.searchParams.get("q")?.trim() ?? "";
+const range = resolveRange(Astro.cookies.get("ccaudit-range")?.value, Date.now());
 let dbError = "";
 let tree: LibraryTree = { repos: [], totalCount: 0 };
 const db = getDb();
-try { tree = getLibraryTree(db); } catch (e) { dbError = e instanceof Error ? e.message : String(e); }
+try { tree = getLibraryTree(db, range); } catch (e) { dbError = e instanceof Error ? e.message : String(e); }
 ---
 <AppShell title={q ? `ccaudit — ask: ${q}` : "ccaudit — ask"}>
   <Sidebar slot="sidebar" tree={tree} />
