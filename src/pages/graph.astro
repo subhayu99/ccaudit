@@ -256,10 +256,30 @@ const graphJson = JSON.stringify(graph);
       return s && s.length > n ? s.slice(0, n - 1) + "…" : s || "";
     }
 
+    // The active "Highlight nodes…" query is the resting state: while it's set, only matches stay
+    // bright and hovering must not relight the rest (it just restores this state on mouse-out).
+    let searchQuery = "";
+    function labelText(d) {
+      if (d.type !== "session") return d.label;
+      return searchQuery && d.label.toLowerCase().includes(searchQuery) ? truncate(d.label, 40) : "";
+    }
+    function applyHighlight() {
+      if (!searchQuery) {
+        node.style("opacity", 1);
+        link.style("stroke-opacity", 0.45);
+      } else {
+        node.style("opacity", (d) => (d.label.toLowerCase().includes(searchQuery) ? 1 : 0.1));
+        link.style("stroke-opacity", 0.05);
+      }
+    }
+
     node
       .on("mouseover", function (event, d) {
-        node.style("opacity", (o) => (connected(d, o) ? 1 : 0.12));
-        link.style("stroke-opacity", (l) => (l.source.id === d.id || l.target.id === d.id ? 0.85 : 0.04));
+        // Neighbor-highlight only when there's no active search — otherwise leave the filter intact.
+        if (!searchQuery) {
+          node.style("opacity", (o) => (connected(d, o) ? 1 : 0.12));
+          link.style("stroke-opacity", (l) => (l.source.id === d.id || l.target.id === d.id ? 0.85 : 0.04));
+        }
         if (d.type === "session") {
           select(this).select("text").text(truncate(d.label, 40)).attr("font-weight", 600);
         } else {
@@ -282,11 +302,10 @@ const graphJson = JSON.stringify(graph);
         tooltip.style.top = event.clientY - rect.top + 12 + "px";
       })
       .on("mouseout", function (event, d) {
-        node.style("opacity", 1);
-        link.style("stroke-opacity", 0.45);
+        applyHighlight(); // restore the search-filtered state (or full, if no query) — not "all bright"
         select(this)
           .select("text")
-          .text(d.type === "session" ? "" : d.label)
+          .text(labelText(d))
           .attr("font-weight", d.type === "session" ? 400 : 600);
         tooltip.classList.add("hidden");
       })
@@ -369,20 +388,9 @@ const graphJson = JSON.stringify(graph);
     // In-graph search: highlight matching node labels, dim the rest.
     const searchInput = document.getElementById("graph-search");
     searchInput.addEventListener("input", () => {
-      const q = searchInput.value.trim().toLowerCase();
-      if (!q) {
-        node.style("opacity", 1);
-        link.style("stroke-opacity", 0.45);
-        label.text((d) => (d.type === "session" ? "" : d.label));
-        return;
-      }
-      node.style("opacity", (d) => (d.label.toLowerCase().includes(q) ? 1 : 0.1));
-      link.style("stroke-opacity", 0.05);
-      // Reveal labels of matching session nodes too
-      label.text((d) => {
-        if (d.type !== "session") return d.label;
-        return d.label.toLowerCase().includes(q) ? truncate(d.label, 40) : "";
-      });
+      searchQuery = searchInput.value.trim().toLowerCase();
+      applyHighlight();
+      label.text(labelText); // reveal matching session labels; hide the rest
     });
 
     // Zoom-to-fit: frame all nodes within the canvas so nothing clips off-edge.
