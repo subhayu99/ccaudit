@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { filterGraphByTypes } from "../src/lib/graph-filter.js";
+import { filterGraphByTypes, buildAdjacency } from "../src/lib/graph-filter.js";
 import type { GraphData } from "../src/db/graph.js";
 
 // repo R ← workdir W ← {S1, S2};  S1 → topic T
@@ -65,5 +65,40 @@ describe("filterGraphByTypes", () => {
     const g = filterGraphByTypes(FIXTURE, new Set(["repo", "session"]));
     expect(ids(g)).toEqual(["repo:R", "sess:S1", "sess:S2"]);
     expect(linkPairs(g)).toEqual(["sess:S1->repo:R", "sess:S2->repo:R"]);
+  });
+});
+
+describe("buildAdjacency", () => {
+  const sorted = (adj: Map<string, Set<string>>, id: string) => [...(adj.get(id) ?? [])].sort();
+
+  it("builds a bidirectional neighbor map from string-id links", () => {
+    const adj = buildAdjacency([
+      { source: "a", target: "b" },
+      { source: "b", target: "c" },
+    ]);
+    expect(sorted(adj, "a")).toEqual(["b"]);
+    expect(sorted(adj, "b")).toEqual(["a", "c"]); // hub has both neighbors
+    expect(sorted(adj, "c")).toEqual(["b"]);
+  });
+
+  it("handles links whose source/target are node objects (post-d3-mutation)", () => {
+    const adj = buildAdjacency([
+      { source: { id: "x" }, target: { id: "y" } },
+    ]);
+    expect(sorted(adj, "x")).toEqual(["y"]);
+    expect(sorted(adj, "y")).toEqual(["x"]);
+  });
+
+  it("deduplicates repeated edges between the same pair", () => {
+    const adj = buildAdjacency([
+      { source: "a", target: "b" },
+      { source: "a", target: "b" },
+    ]);
+    expect(sorted(adj, "a")).toEqual(["b"]); // Set, so no duplicate
+    expect(sorted(adj, "b")).toEqual(["a"]);
+  });
+
+  it("returns an empty map for no links", () => {
+    expect(buildAdjacency([]).size).toBe(0);
   });
 });

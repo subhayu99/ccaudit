@@ -105,7 +105,7 @@ const graphJson = JSON.stringify(graph);
     import { select } from "d3-selection";
     import { zoom, zoomIdentity } from "d3-zoom";
     import { drag } from "d3-drag";
-    import { filterGraphByTypes } from "../lib/graph-filter";
+    import { filterGraphByTypes, buildAdjacency } from "../lib/graph-filter";
 
     const fullData = JSON.parse(document.getElementById("graph-data").dataset.graph);
     const container = document.getElementById("graph-container");
@@ -133,7 +133,10 @@ const graphJson = JSON.stringify(graph);
 
     const svg = select(svgEl);
     const root = svg.append("g");
-    const zoomBehavior = zoom().scaleExtent([0.1, 6]).on("zoom", (e) => root.attr("transform", e.transform));
+    const zoomBehavior = zoom().scaleExtent([0.1, 6]).on("zoom", (e) => {
+      root.attr("transform", e.transform);
+      if (e.transform.k !== currentK) { currentK = e.transform.k; cullLabels(false); }
+    });
     svg.call(zoomBehavior);
 
     // Soft glow for hubs (on the svg defs, persists across rebuilds).
@@ -157,6 +160,13 @@ const graphJson = JSON.stringify(graph);
 
     // --- Selections + sim, rebuilt on each toggle ---
     let link, node, label, sim, curLinks;
+    // Precomputed adjacency (id -> Set of neighbor ids), rebuilt per render for O(1) hover focus.
+    let adjacency = new Map();
+    // Label culling: below this zoom scale, the secondary hub labels (folders/topics) are hidden
+    // to cut SVG-text paint cost and visual clutter; repo labels stay as orientation anchors.
+    const LABEL_MIN_K = 0.55;
+    let currentK = 1;
+    let labelsShown = true;
 
     function truncate(s, n) { return s && s.length > n ? s.slice(0, n - 1) + "…" : s || ""; }
     function labelText(d) {
@@ -174,13 +184,20 @@ const graphJson = JSON.stringify(graph);
       }
     }
     function neighbors(d) {
-      const s = new Set([d.id]);
-      curLinks.forEach((l) => {
-        const sid = l.source.id ?? l.source, tid = l.target.id ?? l.target;
-        if (sid === d.id) s.add(tid);
-        if (tid === d.id) s.add(sid);
-      });
-      return s;
+      // O(1) lookup against the precomputed adjacency map (was O(edges) per hover).
+      const nb = adjacency.get(d.id);
+      return nb ? new Set(nb).add(d.id) : new Set([d.id]);
+    }
+    // Show/hide secondary hub labels by zoom level. repos always labelled (orientation);
+    // session labels are search-driven (empty text otherwise, so cheap) — only folders/topics cull.
+    function cullLabels(force) {
+      if (!label) return;
+      const show = currentK >= LABEL_MIN_K;
+      if (!force && show === labelsShown) return; // only touch the DOM when crossing the threshold
+      labelsShown = show;
+      label.style("display", (d) =>
+        d.type === "workdir" || d.type === "topic" ? (show ? null : "none") : null,
+      );
     }
     const curve = (d) => {
       const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
@@ -191,6 +208,7 @@ const graphJson = JSON.stringify(graph);
     function build(animate) {
       const filtered = filterGraphByTypes(fullData, visible);
       curLinks = filtered.links;
+      adjacency = buildAdjacency(curLinks); // ids are still strings here, before forceLink mutates them
       root.selectAll("*").remove();
 
       link = root.append("g").selectAll("path").data(curLinks).join("path")
@@ -222,7 +240,7 @@ const graphJson = JSON.stringify(graph);
               return sid === d.id || tid === d.id ? 0.55 : 0.03;
             });
           }
-          select(this).select("text").text(truncate(d.label, 48)).attr("font-weight", 700);
+          select(this).select("text").style("display", null).text(truncate(d.label, 48)).attr("font-weight", 700);
           let meta;
           if (d.type === "topic") meta = `topic · ${d.sessionCount} session${d.sessionCount === 1 ? "" : "s"}`;
           else if (d.type === "repo") meta = `repo · ${d.workdirCount} folder${d.workdirCount === 1 ? "" : "s"}${d.remote ? ` · ${d.remote}` : ""}`;
@@ -239,6 +257,7 @@ const graphJson = JSON.stringify(graph);
         .on("mouseout", function (event, d) {
           applyHighlight();
           select(this).select("text").text(labelText(d)).attr("font-weight", ts(d).hub ? 600 : 400);
+          cullLabels(true); // re-hide this label if we're zoomed out past the threshold
           tooltip.classList.add("hidden");
         })
         .on("click", (event, d) => {
@@ -274,6 +293,7 @@ const graphJson = JSON.stringify(graph);
         fitView(0);
       }
       applyHighlight();
+      cullLabels(true); // set initial label visibility for the current zoom (fitView refines via zoom events)
     }
 
     function fitView(ms) {

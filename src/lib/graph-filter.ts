@@ -56,3 +56,30 @@ export function filterGraphByTypes(data: GraphData, visible: Set<string>): Graph
 
   return { nodes, links };
 }
+
+/**
+ * Precompute a bidirectional adjacency map (node id → set of neighbor ids) from a link list.
+ *
+ * The hover-focus interaction needs "is node B a neighbor of the hovered node A?" answered on
+ * every mousemove. Scanning all links per hover is O(edges); building this map once per render
+ * makes each lookup O(1). Accepts links whose source/target are either raw id strings (fresh from
+ * filterGraphByTypes) or node objects with an `id` (after d3-force mutates them in place), so it
+ * can be built at any point in the render lifecycle.
+ */
+export function buildAdjacency(
+  links: ReadonlyArray<{ source: string | { id: string }; target: string | { id: string } }>,
+): Map<string, Set<string>> {
+  const adj = new Map<string, Set<string>>();
+  const add = (a: string, b: string) => {
+    let s = adj.get(a);
+    if (!s) { s = new Set(); adj.set(a, s); }
+    s.add(b);
+  };
+  for (const l of links) {
+    const s = typeof l.source === "string" ? l.source : l.source.id;
+    const t = typeof l.target === "string" ? l.target : l.target.id;
+    add(s, t);
+    add(t, s);
+  }
+  return adj;
+}
