@@ -3,6 +3,12 @@ import { listWorkdirs } from "./workdirs.js";
 import { computeRepoComponents } from "../identity/components.js";
 import { listExclusions, sessionKeepCondition } from "./exclusions.js";
 import { cleanPromptText } from "../lib/clean-prompt.js";
+import { sessionCostUsd, type TokenUsage } from "../lib/pricing.js";
+
+function parseTokenUsage(raw: string | null): TokenUsage | null {
+  if (!raw) return null;
+  try { return JSON.parse(raw) as TokenUsage; } catch { return null; }
+}
 
 export type DayLabel = "Today" | "Yesterday" | "Earlier this week" | "Older";
 
@@ -28,6 +34,7 @@ export type LibrarySession = {
   lastActivity: number | null;
   messageCount: number;
   compactCount: number;
+  costUsd: number;
   workdirPath: string;
 };
 export type LibraryWorkdir = {
@@ -60,6 +67,7 @@ function titleOf(aiTitle: string | null, firstPrompt: string | null, id: string)
 type LibRow = {
   id: string; cwd: string; ai_title: string | null; first_prompt: string | null;
   last_activity: number | null; message_count: number; compact_count: number;
+  token_usage: string | null;
 };
 
 // Per-connection memo cache for getLibraryTree. Keyed by Database instance so
@@ -96,7 +104,7 @@ function buildLibraryTree(db: Database.Database): LibraryTree {
   const rows = db
     .prepare(
       `SELECT id, cwd, ai_title, first_prompt, last_activity AS last_activity,
-              message_count AS message_count, compact_count AS compact_count
+              message_count AS message_count, compact_count AS compact_count, token_usage
          FROM sessions
         WHERE cwd IS NOT NULL AND ${excl.sql}
         ORDER BY last_activity DESC`
@@ -109,7 +117,8 @@ function buildLibraryTree(db: Database.Database): LibraryTree {
     const s: LibrarySession = {
       id: r.id, title: titleOf(r.ai_title, r.first_prompt, r.id),
       lastActivity: r.last_activity, messageCount: r.message_count,
-      compactCount: r.compact_count, workdirPath: r.cwd,
+      compactCount: r.compact_count, costUsd: sessionCostUsd(parseTokenUsage(r.token_usage)),
+      workdirPath: r.cwd,
     };
     const list = byWorkdir.get(r.cwd);
     if (list) list.push(s);
@@ -151,9 +160,10 @@ export type Selection =
 
 export type ListItem = {
   id: string; title: string; workdirLabel: string;
-  lastActivity: number | null; messageCount: number; compactCount: number;
+  lastActivity: number | null; messageCount: number; compactCount: number; costUsd: number;
 };
-export type ListGroup = { label: DayLabel | "Recent"; items: ListItem[] };
+export type SortMode = "time" | "cost" | "messages";
+export type ListGroup = { label: DayLabel | "Recent" | "Most expensive" | "Most messages"; items: ListItem[] };
 export type GroupedList = {
   header: { title: string; subtitle: string | null };
   groups: ListGroup[];
@@ -165,9 +175,11 @@ export function listSessionsGrouped(
   db: Database.Database,
   sel: Selection,
   nowMs: number,
-  precomputedTree?: LibraryTree
+  precomputedTree?: LibraryTree,
+  opts: { sort?: SortMode } = {}
 ): GroupedList {
   const tree = precomputedTree ?? getLibraryTree(db);
+  const sort: SortMode = opts.sort ?? "time";
 
   let items: ListItem[] = [];
   let header: { title: string; subtitle: string | null } = { title: "All sessions", subtitle: null };
@@ -175,6 +187,7 @@ export function listSessionsGrouped(
   const toItem = (s: LibrarySession, workdirLabel: string): ListItem => ({
     id: s.id, title: s.title, workdirLabel,
     lastActivity: s.lastActivity, messageCount: s.messageCount, compactCount: s.compactCount,
+    costUsd: s.costUsd,
   });
 
   if ("repo" in sel) {
@@ -195,6 +208,16 @@ export function listSessionsGrouped(
   } else {
     header = { title: sel.mode === "recent" ? "Recent" : "All sessions", subtitle: null };
     items = tree.repos.flatMap((r) => r.workdirs.flatMap((w) => w.sessions.map((s) => toItem(s, w.label))));
+  }
+
+  // Cost / messages sort: one flat ranked list (the day buckets only make sense for time).
+  if (sort === "cost") {
+    items.sort((a, b) => b.costUsd - a.costUsd || (b.lastActivity ?? 0) - (a.lastActivity ?? 0));
+    return { header, groups: items.length ? [{ label: "Most expensive", items }] : [] };
+  }
+  if (sort === "messages") {
+    items.sort((a, b) => b.messageCount - a.messageCount || (b.lastActivity ?? 0) - (a.lastActivity ?? 0));
+    return { header, groups: items.length ? [{ label: "Most messages", items }] : [] };
   }
 
   items.sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0));

@@ -1,14 +1,29 @@
 ---
 // src/components/SessionListPane.astro
-import type { GroupedList } from "../db/library";
+import type { GroupedList, SortMode } from "../db/library";
 import { formatTimestamp, relativeTime } from "../lib/render";
-interface Props { data: GroupedList; activeSession?: string; selParams?: string; }
-const { data, activeSession, selParams = "" } = Astro.props;
+import { formatUsd } from "../lib/pricing";
+interface Props { data: GroupedList; activeSession?: string; selParams?: string; sort?: SortMode; }
+const { data, activeSession, selParams = "", sort = "time" } = Astro.props;
 const sessionHref = (id: string) => (selParams ? `/?${selParams}&session=${id}` : `/?session=${id}`);
+// Sort control links preserve the current selection; "time" is the default (no param).
+const sortHref = (s: SortMode) => {
+  const parts = [selParams, s === "time" ? "" : `sort=${s}`].filter(Boolean);
+  return parts.length ? `/?${parts.join("&")}` : "/";
+};
+const SORTS: { key: SortMode; label: string }[] = [
+  { key: "time", label: "Recent" },
+  { key: "cost", label: "Cost" },
+  { key: "messages", label: "Messages" },
+];
 ---
 <div class="px-[18px] pt-4 pb-3" style="border-bottom:1px solid var(--border-soft);">
   {data.header.subtitle && <div class="text-[12px] font-mono-w" style="color:var(--text-faint);">{data.header.subtitle}</div>}
   <h2 class="font-serif text-[21px] font-semibold flex items-center gap-2" style="color:var(--text);">{data.header.title}</h2>
+  <div class="flex items-center gap-1 mt-2">
+    <span class="text-[10.5px] uppercase tracking-wider mr-1" style="color:var(--text-faint);">Sort</span>
+    {SORTS.map((s) => <a href={sortHref(s.key)} class="sortbtn" data-on={sort === s.key}>{s.label}</a>)}
+  </div>
 </div>
 <div class="overflow-y-auto flex-1 px-2.5 pb-5">
   {data.groups.length === 0 && (
@@ -25,6 +40,9 @@ const sessionHref = (id: string) => (selParams ? `/?${selParams}&session=${id}` 
             <span class="badge msg" title={`${it.messageCount.toLocaleString()} messages`}>{it.messageCount.toLocaleString()}</span>
             {it.compactCount > 0 && (
               <span class="badge cmp" title={`${it.compactCount} compact${it.compactCount === 1 ? "" : "s"}`}>⊟ {it.compactCount}</span>
+            )}
+            {it.costUsd > 0 && (
+              <span class="badge cost" title={`~${formatUsd(it.costUsd)} estimated AI spend`}>~{formatUsd(it.costUsd)}</span>
             )}
             <span class="ct-time" title={formatTimestamp(it.lastActivity)}>{relativeTime(it.lastActivity)}</span>
           </div>
@@ -48,9 +66,14 @@ const sessionHref = (id: string) => (selParams ? `/?${selParams}&session=${id}` 
   .badge.wd  { background:rgba(155,130,214,.16); color:#c2b0e8; max-width:150px; overflow:hidden; text-overflow:ellipsis; }
   .badge.msg { background:rgba(127,174,122,.18); color:#9ccd96; }
   .badge.cmp { background:rgba(207,138,74,.18); color:#e6ad73; }
+  .badge.cost { background:rgba(210,168,95,.16); color:#dcbd7f; }
+  .sortbtn { font-size:11.5px; padding:2px 9px; border-radius:7px; color:var(--text-dim); text-decoration:none; }
+  .sortbtn:hover { background:var(--panel-2); color:var(--text); }
+  .sortbtn[data-on="true"] { background:var(--raise); color:var(--text); font-weight:600; }
   /* Light mode: the dark-tuned pill text washes out on the light panel — darken it. */
   :global(.theme-light) .ct-time   { color:var(--text-dim); }
   :global(.theme-light) .badge.wd  { background:rgba(124,92,196,.16); color:#5d40a8; }
   :global(.theme-light) .badge.msg { background:rgba(90,138,85,.18); color:#3c7536; }
   :global(.theme-light) .badge.cmp { background:rgba(185,114,47,.2); color:#8a5015; }
+  :global(.theme-light) .badge.cost { background:rgba(176,124,38,.18); color:#7d5410; }
 </style>
