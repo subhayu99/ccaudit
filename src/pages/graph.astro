@@ -20,7 +20,7 @@ const db = getDb();
 try {
   graph = getHierarchyGraphData(db, { includeTopics: true, range });
   tree = getLibraryTree(db, range);
-  topics = listTopics(db);
+  topics = listTopics(db, range);
 } catch (e) {
   dbError = e instanceof Error ? e.message : String(e);
 }

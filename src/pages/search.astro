@@ -22,7 +22,7 @@ let searchError = "";
 const range = resolveRange(Astro.cookies.get("ccaudit-range")?.value, Date.now());
 const db = getDb();
 const tree = getLibraryTree(db, range);
-const topics = listTopics(db);
+const topics = listTopics(db, range);
 if (query) {
   try {
     const raw =

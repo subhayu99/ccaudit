@@ -5,15 +5,17 @@ import { getIndexStats } from "../db/stats";
 import { getActivityByDay, getToolUsage, getSpend, getHistorySpan } from "../db/analytics";
 import { formatUsd } from "../lib/pricing";
 import { CLAUDE_PROJECTS_DIR } from "../paths";
+import { resolveRange } from "../db/date-range";
 
+const range = resolveRange(Astro.cookies.get("ccaudit-range")?.value, Date.now());
 const db = getDb();
-const stats = getIndexStats(db);
+const stats = getIndexStats(db, range);
 const isEmpty = stats.totalSessions === 0;
-const spend = getSpend(db);
+const spend = getSpend(db, range);
 const fmtTok = (n: number) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n));
 
 // Averages & span
-const span = getHistorySpan(db);
+const span = getHistorySpan(db, range);
 const avgCost = stats.totalSessions ? spend.totalCostUsd / stats.totalSessions : 0;
 const avgMsgs = stats.totalSessions ? Math.round(stats.totalMessages / stats.totalSessions) : 0;
 const fmtDate = (ms: number) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -21,8 +23,8 @@ const spanText = span.firstActivity && span.lastActivity
   ? `${fmtDate(span.firstActivity)} → ${fmtDate(span.lastActivity)} · ${span.activeDays} active day${span.activeDays === 1 ? "" : "s"}`
   : "";
 const spendMax = Math.max(1, ...spend.byModel.map((m) => m.costUsd));
-const activity = getActivityByDay(db);
-const tools = getToolUsage(db).slice(0, 12);
+const activity = getActivityByDay(db, range);
+const tools = getToolUsage(db, range).slice(0, 12);
 
 // Build a GitHub-style heatmap grid for the last 18 weeks (msg counts per day).
 const msgsByDay = new Map(activity.map((a) => [a.day, a.messages]));

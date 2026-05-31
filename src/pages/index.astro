@@ -34,7 +34,7 @@ const range = resolveRange(Astro.cookies.get("ccaudit-range")?.value, Date.now()
 const db = getDb();
 try {
   tree = getLibraryTree(db, range);
-  topics = listTopics(db);
+  topics = listTopics(db, range);
   const topic = topicId !== undefined ? getTopic(db, topicId) : null;
   const sel: Selection = repo
     ? { repo }

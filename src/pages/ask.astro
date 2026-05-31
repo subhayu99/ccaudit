@@ -13,7 +13,7 @@ let dbError = "";
 let tree: LibraryTree = { repos: [], totalCount: 0 };
 let topics: TopicSummary[] = [];
 const db = getDb();
-try { tree = getLibraryTree(db, range); topics = listTopics(db); } catch (e) { dbError = e instanceof Error ? e.message : String(e); }
+try { tree = getLibraryTree(db, range); topics = listTopics(db, range); } catch (e) { dbError = e instanceof Error ? e.message : String(e); }
 ---
 <AppShell title={q ? `ccaudit — ask: ${q}` : "ccaudit — ask"}>
   <Sidebar slot="sidebar" tree={tree} topics={topics} />

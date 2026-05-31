@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { sessionKeepCondition } from "./exclusions.js";
+import { rangeCondition, type DateRange } from "./date-range.js";
 
 export type IndexStats = {
   totalSessions: number;
@@ -9,8 +10,9 @@ export type IndexStats = {
   newestSession: number | null;
 };
 
-export function getIndexStats(db: Database.Database): IndexStats {
+export function getIndexStats(db: Database.Database, range: DateRange | null = null): IndexStats {
   const excl = sessionKeepCondition(db);
+  const rg = rangeCondition(range, "last_activity");
   const row = db
     .prepare(
       `SELECT
@@ -20,8 +22,8 @@ export function getIndexStats(db: Database.Database): IndexStats {
          COALESCE(MIN(started_at), 0)                                      AS oldestSession,
          COALESCE(MAX(last_activity), 0)                                   AS newestSession
        FROM sessions
-      WHERE ${excl.sql}`
+      WHERE ${excl.sql} AND ${rg.sql}`
     )
-    .get(excl.params) as IndexStats;
+    .get({ ...excl.params, ...rg.params }) as IndexStats;
   return row;
 }

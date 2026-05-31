@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import type { TopicCluster } from "../labeling/cluster-topics.js";
+import { rangeCondition, type DateRange } from "./date-range.js";
 
 export type TopicSummary = { id: number; name: string; sessionCount: number };
 
@@ -19,15 +20,29 @@ export function replaceTopics(db: Database.Database, clusters: TopicCluster[]): 
   tx();
 }
 
-export function listTopics(db: Database.Database): TopicSummary[] {
+export function listTopics(db: Database.Database, range: DateRange | null = null): TopicSummary[] {
+  const rg = rangeCondition(range, "s.last_activity");
+  if (rg.sql === "1") {
+    return db
+      .prepare(
+        `SELECT t.id, t.name, COUNT(m.session_id) AS sessionCount
+           FROM topics t LEFT JOIN topic_members m ON m.topic_id = t.id
+          GROUP BY t.id, t.name
+          ORDER BY sessionCount DESC, t.name ASC`
+      )
+      .all() as TopicSummary[];
+  }
+  // Range-scoped: count only members whose session falls in the window.
   return db
     .prepare(
-      `SELECT t.id, t.name, COUNT(m.session_id) AS sessionCount
-         FROM topics t LEFT JOIN topic_members m ON m.topic_id = t.id
+      `SELECT t.id, t.name, COUNT(s.id) AS sessionCount
+         FROM topics t
+         LEFT JOIN topic_members m ON m.topic_id = t.id
+         LEFT JOIN sessions s ON s.id = m.session_id AND ${rg.sql}
         GROUP BY t.id, t.name
         ORDER BY sessionCount DESC, t.name ASC`
     )
-    .all() as TopicSummary[];
+    .all(rg.params) as TopicSummary[];
 }
 
 /** Session ids already assigned to some topic. */

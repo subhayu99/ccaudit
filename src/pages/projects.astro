@@ -14,7 +14,7 @@ const db = getDb();
 const projects = listProjects(db);
 const hidden = listExclusions(db);
 const tree = getLibraryTree(db, range);
-const topics = listTopics(db);
+const topics = listTopics(db, range);
 const rules = listRules(db);
 const ruleLabel = (kind: string) => (kind === "session" ? "session" : kind === "regex" ? "regex" : "phrase");
 ---
