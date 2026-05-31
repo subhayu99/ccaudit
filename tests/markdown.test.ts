@@ -8,10 +8,25 @@ describe("lib/markdown", () => {
     expect(html).toContain("<em>italic</em>");
   });
 
-  it("renders fenced code blocks", async () => {
+  const stripTags = (h: string) => h.replace(/<[^>]+>/g, "");
+
+  it("renders fenced code blocks with shiki syntax highlighting", async () => {
     const html = await renderMarkdown("```js\nconst x = 1;\n```");
     expect(html).toContain("<pre");
-    expect(html).toContain("const x = 1");
+    expect(html).toContain("shiki"); // shiki wrapper class present
+    expect(html).toMatch(/<span[^>]*style=/); // tokens carry per-token inline colors
+    expect(stripTags(html)).toContain("const x = 1"); // code text preserved across the token spans
+  });
+
+  it("falls back to plain text for an unknown language without throwing", async () => {
+    const html = await renderMarkdown("```wat\nhello world\n```");
+    expect(html).toContain("<pre");
+    expect(stripTags(html)).toContain("hello world");
+  });
+
+  it("leaves inline code as a plain <code> element (not shiki)", async () => {
+    const html = await renderMarkdown("use `npm test` to run");
+    expect(html).toContain("<code>npm test</code>");
   });
 
   it("renders an empty input as empty string", async () => {
