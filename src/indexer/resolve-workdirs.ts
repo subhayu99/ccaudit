@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { Db } from "../db/init.js";
 import { existsSync } from "node:fs";
 import { resolveIdentity, type GitRunner } from "../identity/resolve.js";
 import { getWorkdir, upsertWorkdir } from "../db/workdirs.js";
@@ -23,7 +23,7 @@ export type ResolveWorkdirsDeps = {
  *
  * Returns the number of workdirs (re)resolved.
  */
-export function resolveWorkdirs(db: Database.Database, deps: ResolveWorkdirsDeps = {}): number {
+export function resolveWorkdirs(db: Db, deps: ResolveWorkdirsDeps = {}): number {
   const exists = deps.exists ?? existsSync;
   const now = deps.now ?? Date.now;
 

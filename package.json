@@ -1,6 +1,6 @@
 {
   "name": "@subhayu99/ccaudit",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Browse, search, and audit your Claude Code session history",
   "type": "module",
   "author": "subhayu99",
@@ -50,13 +50,12 @@
     "prepublishOnly": "npm run build && npm test"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.5.0"
   },
   "dependencies": {
     "@astrojs/node": "^9.5.5",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "astro": "^5.18.1",
-    "better-sqlite3": "^12.10.0",
     "commander": "^12.1.0",
     "d3-drag": "^3.0.0",
     "d3-force": "^3.0.0",
@@ -71,7 +70,6 @@
     "@astrojs/check": "^0.9.9",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.3.0",
-    "@types/better-sqlite3": "^7.6.11",
     "@types/d3-drag": "^3.0.7",
     "@types/d3-force": "^3.0.10",
     "@types/d3-selection": "^3.0.11",

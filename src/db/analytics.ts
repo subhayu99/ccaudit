@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { Db } from "./init.js";
 import { modelCostUsd, type TokenUsage } from "../lib/pricing.js";
 import { rangeCondition, type DateRange } from "./date-range.js";
 
@@ -12,7 +12,7 @@ export type ModelSpend = { model: string; tokens: number; costUsd: number };
 export type Spend = { totalCostUsd: number; totalTokens: number; byModel: ModelSpend[] };
 
 /** Aggregate estimated AI spend across all indexed sessions, from captured per-model token usage. */
-export function getSpend(db: Database.Database, range: DateRange | null = null): Spend {
+export function getSpend(db: Db, range: DateRange | null = null): Spend {
   const rg = rangeCondition(range, "last_activity");
   const rows = db
     .prepare(`SELECT token_usage FROM sessions WHERE token_usage IS NOT NULL AND ${rg.sql}`)
@@ -47,7 +47,7 @@ export type HistorySpan = { firstActivity: number | null; lastActivity: number |
 
 /** First/last session activity (epoch ms) and the count of distinct local calendar days
  *  with any activity — the "how long & how often" framing for the dashboard. */
-export function getHistorySpan(db: Database.Database, range: DateRange | null = null): HistorySpan {
+export function getHistorySpan(db: Db, range: DateRange | null = null): HistorySpan {
   const rg = rangeCondition(range, "last_activity");
   const row = db
     .prepare(
@@ -79,11 +79,11 @@ export type ToolUsage = {
 let _activity: { key: number; val: DayActivity[] } | null = null;
 let _tools: { key: number; val: ToolUsage[] } | null = null;
 
-function messageCount(db: Database.Database): number {
+function messageCount(db: Db): number {
   return (db.prepare("SELECT COUNT(*) AS c FROM messages").get() as { c: number }).c;
 }
 
-export function getActivityByDay(db: Database.Database, range: DateRange | null = null): DayActivity[] {
+export function getActivityByDay(db: Db, range: DateRange | null = null): DayActivity[] {
   const key = messageCount(db);
   if (!range && _activity && _activity.key === key) return _activity.val; // memo only the unfiltered case
   const rg = rangeCondition(range, "last_activity");
@@ -102,7 +102,7 @@ export function getActivityByDay(db: Database.Database, range: DateRange | null 
   return rows;
 }
 
-export function getToolUsage(db: Database.Database, range: DateRange | null = null): ToolUsage[] {
+export function getToolUsage(db: Db, range: DateRange | null = null): ToolUsage[] {
   const key = messageCount(db);
   if (!range && _tools && _tools.key === key) return _tools.val;
 

@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { Db } from "../db/init.js";
 import { listSessions, getSession } from "../db/sessions.js";
 import {
   searchMessages,
@@ -11,7 +11,7 @@ import { classifyMessage } from "../lib/message-kind.js";
 import { clampLimit } from "../cli/limit.js";
 
 export function toolListSessions(
-  db: Database.Database,
+  db: Db,
   args: { limit?: number; project?: string }
 ) {
   const sessions = listSessions(db, { limit: clampLimit(args.limit, 30), projectDir: args.project });
@@ -28,7 +28,7 @@ export function toolListSessions(
 }
 
 export function toolSearchSessions(
-  db: Database.Database,
+  db: Db,
   args: { query: string; mode?: "fts" | "exact" | "regex"; limit?: number }
 ) {
   const limit = clampLimit(args.limit, 20);
@@ -52,7 +52,7 @@ export function toolSearchSessions(
 }
 
 export function toolGetSession(
-  db: Database.Database,
+  db: Db,
   args: { sessionId: string; includeMessages?: boolean; limit?: number }
 ) {
   const session = getSession(db, args.sessionId);
@@ -86,6 +86,6 @@ export function toolGetSession(
   return { ...base, messages: msgs };
 }
 
-export function toolIndexStats(db: Database.Database) {
+export function toolIndexStats(db: Db) {
   return getIndexStats(db);
 }

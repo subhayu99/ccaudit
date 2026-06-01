@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { Db } from "./init.js";
 import type { MessageRow, SearchHit } from "../types.js";
 import { sessionKeepCondition } from "./exclusions.js";
 import { rangeCondition, type DateRange } from "./date-range.js";
@@ -33,7 +33,7 @@ function rowToMessage(r: MessageRowSql): MessageRow {
   };
 }
 
-export function insertMessages(db: Database.Database, rows: MessageRow[]): void {
+export function insertMessages(db: Db, rows: MessageRow[]): void {
   // OR IGNORE: in append-mode re-indexing we hand the full parsed message set but only the
   // new line_nos are absent (PK is session_id+line_no), so existing rows are kept and their
   // FTS entries are not re-tokenized. In full-mode the session's rows were just deleted, so
@@ -67,11 +67,11 @@ export function insertMessages(db: Database.Database, rows: MessageRow[]): void 
   tx(rows);
 }
 
-export function deleteSessionMessages(db: Database.Database, sessionId: string): void {
+export function deleteSessionMessages(db: Db, sessionId: string): void {
   db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
 }
 
-export function getSessionMessages(db: Database.Database, sessionId: string): MessageRow[] {
+export function getSessionMessages(db: Db, sessionId: string): MessageRow[] {
   const rows = db
     .prepare("SELECT * FROM messages WHERE session_id = ? ORDER BY line_no ASC")
     .all(sessionId) as MessageRowSql[];
@@ -80,7 +80,7 @@ export function getSessionMessages(db: Database.Database, sessionId: string): Me
 
 /** The last `limit` messages (chronological). Avoids loading 17k rows to show a few hundred. */
 export function getSessionMessagesTail(
-  db: Database.Database,
+  db: Db,
   sessionId: string,
   limit: number
 ): MessageRow[] {
@@ -96,7 +96,7 @@ export function getSessionMessagesTail(
 
 /** The first `limit` messages (chronological) — for building opening context (e.g. titling). */
 export function getSessionMessagesHead(
-  db: Database.Database,
+  db: Db,
   sessionId: string,
   limit: number
 ): MessageRow[] {
@@ -123,7 +123,7 @@ export function escapeFtsQueryAny(query: string): string {
 }
 
 export function searchMessages(
-  db: Database.Database,
+  db: Db,
   query: string,
   opts: { limit?: number; match?: "all" | "any"; types?: string[]; range?: DateRange | null } = {}
 ): SearchHit[] {
@@ -184,7 +184,7 @@ function contextSnippet(text: string, query: string, contextChars = 80): string 
 }
 
 export function searchMessagesExact(
-  db: Database.Database,
+  db: Db,
   query: string,
   opts: { limit?: number; range?: DateRange | null } = {}
 ): SearchHit[] {
@@ -221,7 +221,7 @@ export function searchMessagesExact(
 }
 
 export function searchMessagesRegex(
-  db: Database.Database,
+  db: Db,
   pattern: string,
   opts: { limit?: number; range?: DateRange | null } = {}
 ): SearchHit[] {

@@ -1,11 +1,11 @@
-import type Database from "better-sqlite3";
+import type { Db } from "./init.js";
 import type { TopicCluster } from "../labeling/cluster-topics.js";
 import { rangeCondition, type DateRange } from "./date-range.js";
 
 export type TopicSummary = { id: number; name: string; sessionCount: number };
 
 /** Replace all topics with a freshly clustered set (atomic). */
-export function replaceTopics(db: Database.Database, clusters: TopicCluster[]): void {
+export function replaceTopics(db: Db, clusters: TopicCluster[]): void {
   const tx = db.transaction(() => {
     db.prepare("DELETE FROM topic_members").run();
     db.prepare("DELETE FROM topics").run();
@@ -20,7 +20,7 @@ export function replaceTopics(db: Database.Database, clusters: TopicCluster[]): 
   tx();
 }
 
-export function listTopics(db: Database.Database, range: DateRange | null = null): TopicSummary[] {
+export function listTopics(db: Db, range: DateRange | null = null): TopicSummary[] {
   const rg = rangeCondition(range, "s.last_activity");
   if (rg.sql === "1") {
     return db
@@ -46,14 +46,14 @@ export function listTopics(db: Database.Database, range: DateRange | null = null
 }
 
 /** Session ids already assigned to some topic. */
-export function getClusteredSessionIds(db: Database.Database): Set<string> {
+export function getClusteredSessionIds(db: Db): Set<string> {
   const rows = db.prepare("SELECT DISTINCT session_id AS s FROM topic_members").all() as Array<{ s: string }>;
   return new Set(rows.map((r) => r.s));
 }
 
 /** Incrementally merge clusters into the existing set: match a topic by name
  *  (case-insensitive) or create it, then insert members. Never wipes. */
-export function addToTopics(db: Database.Database, clusters: TopicCluster[]): void {
+export function addToTopics(db: Db, clusters: TopicCluster[]): void {
   const tx = db.transaction(() => {
     const findT = db.prepare("SELECT id FROM topics WHERE name = ? COLLATE NOCASE");
     const insT = db.prepare("INSERT INTO topics (name, created_at) VALUES (?, ?)");
@@ -69,7 +69,7 @@ export function addToTopics(db: Database.Database, clusters: TopicCluster[]): vo
 }
 
 /** Rename a topic. Returns false on empty name or a case-insensitive clash with another topic. */
-export function renameTopic(db: Database.Database, id: number, name: string): boolean {
+export function renameTopic(db: Db, id: number, name: string): boolean {
   const trimmed = name.trim();
   if (!trimmed) return false;
   const clash = db
@@ -80,7 +80,7 @@ export function renameTopic(db: Database.Database, id: number, name: string): bo
 }
 
 /** Delete a topic and its membership rows (its sessions become "unclustered" again). */
-export function deleteTopic(db: Database.Database, id: number): void {
+export function deleteTopic(db: Db, id: number): void {
   db.transaction(() => {
     db.prepare("DELETE FROM topic_members WHERE topic_id = ?").run(id);
     db.prepare("DELETE FROM topics WHERE id = ?").run(id);
@@ -88,7 +88,7 @@ export function deleteTopic(db: Database.Database, id: number): void {
 }
 
 /** Merge `sourceIds` into `intoId`: re-point members (dedup), then drop the emptied source topics. */
-export function mergeTopics(db: Database.Database, sourceIds: number[], intoId: number): void {
+export function mergeTopics(db: Db, sourceIds: number[], intoId: number): void {
   const sources = sourceIds.filter((s) => s !== intoId);
   if (sources.length === 0) return;
   db.transaction(() => {
@@ -104,7 +104,7 @@ export function mergeTopics(db: Database.Database, sourceIds: number[], intoId: 
 }
 
 /** Another topic (≠ exceptId) with the given name (case-insensitive), if any. */
-export function findTopicByName(db: Database.Database, name: string, exceptId?: number): TopicSummary | null {
+export function findTopicByName(db: Db, name: string, exceptId?: number): TopicSummary | null {
   const row = db
     .prepare("SELECT id FROM topics WHERE name = ? COLLATE NOCASE AND id <> ?")
     .get(name.trim(), exceptId ?? -1) as { id: number } | undefined;
@@ -112,7 +112,7 @@ export function findTopicByName(db: Database.Database, name: string, exceptId?: 
   return listTopics(db).find((t) => t.id === row.id) ?? null;
 }
 
-export function getTopic(db: Database.Database, topicId: number): { name: string; sessionIds: string[] } | null {
+export function getTopic(db: Db, topicId: number): { name: string; sessionIds: string[] } | null {
   const t = db.prepare("SELECT name FROM topics WHERE id = ?").get(topicId) as { name: string } | undefined;
   if (!t) return null;
   const sessionIds = (

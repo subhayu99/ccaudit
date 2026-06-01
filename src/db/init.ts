@@ -1,7 +1,10 @@
-import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { createRequire } from "node:module";
+import type { DatabaseSync, StatementSync } from "node:sqlite";
 import { INDEX_DB_PATH } from "../paths.js";
+
+const require = createRequire(import.meta.url);
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -160,8 +163,76 @@ CREATE TABLE IF NOT EXISTS live_sessions (
 CREATE INDEX IF NOT EXISTS idx_live_last_seen ON live_sessions(last_seen DESC);
 `;
 
+/** Lazy load — keeps node:sqlite out of module-eval so the CLI bootstrap shim runs first. */
+function DatabaseSyncCtor(): typeof DatabaseSync {
+  return (require("node:sqlite") as typeof import("node:sqlite")).DatabaseSync;
+}
+
+/**
+ * Thin better-sqlite3-compatible wrapper over node:sqlite's DatabaseSync so the
+ * rest of the codebase (80+ prepare calls, .pragma, .transaction, .function) is unchanged.
+ */
+export class Db {
+  readonly raw: DatabaseSync;
+  private txDepth = 0;
+  constructor(path: string) {
+    const Ctor = DatabaseSyncCtor();
+    this.raw = new Ctor(path);
+  }
+  prepare(sql: string): StatementSync {
+    const stmt = this.raw.prepare(sql);
+    // accept better-sqlite3-style bare named-param objects ({ id } binds to @id/:id/$id)
+    (stmt as unknown as { setAllowBareNamedParameters?: (b: boolean) => void }).setAllowBareNamedParameters?.(true);
+    return stmt;
+  }
+  exec(sql: string): void {
+    this.raw.exec(sql);
+  }
+  /** Run a PRAGMA and return its rows — matches better-sqlite3's .pragma() for query pragmas. */
+  pragma(s: string): unknown[] {
+    return this.raw.prepare(`PRAGMA ${s}`).all();
+  }
+  function(name: string, optionsOrFn: unknown, maybeFn?: unknown): void {
+    if (typeof optionsOrFn === "function") {
+      (this.raw.function as (n: string, f: unknown) => void)(name, optionsOrFn);
+    } else {
+      (this.raw.function as (n: string, o: unknown, f: unknown) => void)(name, optionsOrFn, maybeFn);
+    }
+  }
+  /** better-sqlite3-compatible transaction(): returns a callable that runs fn atomically. Nests via savepoints. */
+  transaction<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+    return (...args: A): R => {
+      const depth = this.txDepth;
+      const sp = `ccx_sp_${depth}`;
+      const begin = depth === 0 ? "BEGIN" : `SAVEPOINT ${sp}`;
+      const commit = depth === 0 ? "COMMIT" : `RELEASE ${sp}`;
+      const rollback = depth === 0 ? "ROLLBACK" : `ROLLBACK TO ${sp}`;
+      this.raw.exec(begin);
+      this.txDepth++;
+      try {
+        const r = fn(...args);
+        this.raw.exec(commit);
+        return r;
+      } catch (e) {
+        try {
+          this.raw.exec(rollback);
+          if (depth !== 0) this.raw.exec(`RELEASE ${sp}`);
+        } catch {
+          /* ignore */
+        }
+        throw e;
+      } finally {
+        this.txDepth--;
+      }
+    };
+  }
+  close(): void {
+    this.raw.close();
+  }
+}
+
 /** Register user-defined SQL functions once per connection (must be present on every handle). */
-function registerFunctions(db: Database.Database): void {
+function registerFunctions(db: Db): void {
   db.function("ccaudit_regexp", { deterministic: true }, (pat: unknown, text: unknown) => {
     if (typeof text !== "string") return 0;
     try {
@@ -173,19 +244,19 @@ function registerFunctions(db: Database.Database): void {
 }
 
 /** Open a fresh connection to `path`. Pure factory — used by tests/CLI that need isolated handles. */
-export function openDb(path: string): Database.Database {
+export function openDb(path: string): Db {
   mkdirSync(dirname(path), { recursive: true });
-  const db = new Database(path);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
+  const db = new Db(path);
+  db.exec("PRAGMA journal_mode = WAL");
+  db.exec("PRAGMA foreign_keys = ON");
   // Wait (don't throw SQLITE_BUSY) when another connection holds a write lock — e.g. the
   // `ccaudit name` bulk writer running while the web server is also indexing.
-  db.pragma("busy_timeout = 5000");
+  db.exec("PRAGMA busy_timeout = 5000");
   // Read-path perf pragmas (safe on a writable WAL connection).
-  db.pragma("synchronous = NORMAL");
-  db.pragma("cache_size = -16000");
-  db.pragma("temp_store = MEMORY");
-  db.pragma("mmap_size = 268435456");
+  db.exec("PRAGMA synchronous = NORMAL");
+  db.exec("PRAGMA cache_size = -16000");
+  db.exec("PRAGMA temp_store = MEMORY");
+  db.exec("PRAGMA mmap_size = 268435456");
   db.exec(SCHEMA);
   const cols = db.pragma("table_info(sessions)") as Array<{ name: string }>;
   if (!cols.some((c) => c.name === "cwd")) {
@@ -198,14 +269,14 @@ export function openDb(path: string): Database.Database {
   return db;
 }
 
-let _db: Database.Database | null = null;
+let _db: Db | null = null;
 
 /**
  * Process-wide shared handle for the default index DB (SSR pages, API routes, MCP server).
  * Never call `.close()` on this from a request handler — it would close the shared connection.
  * Tests and CLI commands use `openDb(path)` directly for isolated handles.
  */
-export function getDb(): Database.Database {
+export function getDb(): Db {
   if (!_db) _db = openDb(INDEX_DB_PATH);
   return _db;
 }

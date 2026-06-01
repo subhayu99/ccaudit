@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { uptime } from "node:os";
 
 /** Parse the seconds from macOS `sysctl -n kern.boottime` output. */
 export function parseDarwinBoottimeSec(out: string): number | null {
@@ -24,6 +25,8 @@ export function getBootTime(now: number = Date.now()): number {
       const secs = parseFloat(up.split(/\s+/)[0] ?? "");
       return Number.isFinite(secs) ? now - secs * 1000 : 0;
     }
-  } catch { /* fall through to 0 */ }
-  return 0;
+  } catch { /* fall through to os.uptime() */ }
+  // Windows (and any platform without a specific branch): derive boot time from
+  // process-runtime os.uptime() in seconds. Falls back to 0 only if non-finite.
+  return Number.isFinite(uptime()) ? now - uptime() * 1000 : 0;
 }

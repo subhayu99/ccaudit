@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { Db } from "../db/init.js";
 import type { LiveInstance } from "./registry.js";
 import { upsertLive, markEnded } from "../db/live-sessions.js";
 
@@ -15,7 +15,7 @@ export type WatchTickSummary = { running: number; endedNow: number };
  * row that's no longer in the registry as ended — 'restart' if its last_seen
  * predates the machine boot, else 'exited'. Idempotent and wrapped in a single tx.
  */
-export function runWatchTick(db: Database.Database, deps: WatchTickDeps): WatchTickSummary {
+export function runWatchTick(db: Db, deps: WatchTickDeps): WatchTickSummary {
   const live = deps.registry();
   const liveIds = new Set(live.map((l) => l.sessionId));
 

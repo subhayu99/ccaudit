@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import type Database from "better-sqlite3";
+import type { Db } from "../../db/init.js";
 import { getDb } from "../../db/init.js";
 import { resolveRange, type DateRange } from "../../db/date-range.js";
 import { searchMessages } from "../../db/messages.js";
@@ -18,7 +18,7 @@ const RAG_TYPES = ["user", "assistant"]; // skip tool output / attachments / met
 
 /** Retrieve relevant spans for a question: meaningful terms only (stopwords stripped), AND-first
  *  then OR-broaden, restricted to real turns, with file-dump noise filtered and sessions diversified. */
-function retrieve(db: Database.Database, q: string, range: DateRange | null): { excerpts: AskExcerpt[]; sources: Source[] } {
+function retrieve(db: Db, q: string, range: DateRange | null): { excerpts: AskExcerpt[]; sources: Source[] } {
   const cleaned = contentTerms(q).join(" ");
   const opts = { limit: 30, types: RAG_TYPES, range };
   let hits: SearchHit[] = cleaned ? searchMessages(db, cleaned, { ...opts, match: "all" }) : [];

@@ -67,6 +67,9 @@ export async function runClaude(
       encoding: "utf8",
       maxBuffer: opts.maxBuffer ?? 32 * 1024 * 1024,
       timeout: opts.timeoutMs ?? 180_000,
+      // On Windows `claude` is a `claude.cmd` shim that execFile can't launch
+      // directly — run it through the shell so the .cmd resolves.
+      shell: process.platform === "win32",
     });
     return typeof stdout === "string" ? stdout : String(stdout);
   } catch (err) {

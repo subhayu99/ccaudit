@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { Db } from "./init.js";
 
 // Tag validation per spec: trimmed, non-empty, max 64 chars.
 function normalize(input: string): string {
@@ -8,7 +8,7 @@ function normalize(input: string): string {
   return t;
 }
 
-export function addTag(db: Database.Database, sessionId: string, tag: string, createdAt: number): void {
+export function addTag(db: Db, sessionId: string, tag: string, createdAt: number): void {
   const t = normalize(tag);
   db.prepare(
     `INSERT INTO session_tags (session_id, tag, created_at)
@@ -17,18 +17,18 @@ export function addTag(db: Database.Database, sessionId: string, tag: string, cr
   ).run(sessionId, t, createdAt);
 }
 
-export function removeTag(db: Database.Database, sessionId: string, tag: string): void {
+export function removeTag(db: Db, sessionId: string, tag: string): void {
   db.prepare("DELETE FROM session_tags WHERE session_id = ? AND tag = ?").run(sessionId, normalize(tag));
 }
 
-export function getSessionTags(db: Database.Database, sessionId: string): string[] {
+export function getSessionTags(db: Db, sessionId: string): string[] {
   const rows = db
     .prepare("SELECT tag FROM session_tags WHERE session_id = ? ORDER BY created_at ASC")
     .all(sessionId) as Array<{ tag: string }>;
   return rows.map((r) => r.tag);
 }
 
-export function getSessionsByTag(db: Database.Database, tag: string): string[] {
+export function getSessionsByTag(db: Db, tag: string): string[] {
   const rows = db
     .prepare(
       "SELECT session_id FROM session_tags WHERE LOWER(tag) = LOWER(?) ORDER BY created_at DESC"

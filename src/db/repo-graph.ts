@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { Db } from "./init.js";
 import type { GraphData, GraphNode, GraphLink } from "./graph.js";
 import { listWorkdirs } from "./workdirs.js";
 import { computeRepoComponents } from "../identity/components.js";
@@ -32,7 +32,7 @@ function basename(p: string): string {
  *   carries its exact `cwd` so the resume command targets the right worktree.
  * - Sessions without a recorded cwd are omitted (they cannot be placed).
  */
-export function getRepoGraphData(db: Database.Database, range: DateRange | null = null): GraphData {
+export function getRepoGraphData(db: Db, range: DateRange | null = null): GraphData {
   const workdirs = listWorkdirs(db);
   const { repos, repoByPath } = computeRepoComponents(workdirs);
   const existsByPath = new Map(workdirs.map((w) => [w.path, w.existsOnDisk]));

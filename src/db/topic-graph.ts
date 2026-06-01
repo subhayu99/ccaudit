@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { Db } from "./init.js";
 import type { GraphData, GraphNode, GraphLink } from "./graph.js";
 import { listTopics } from "./topics.js";
 import { getLibraryTree } from "./library.js";
@@ -9,7 +9,7 @@ import type { DateRange } from "./date-range.js";
  * Topic nodes sized by member count; sessions carry their title for hover/open.
  * Honors exclusions (sessions come from the visible library tree).
  */
-export function getTopicGraphData(db: Database.Database, range: DateRange | null = null): GraphData {
+export function getTopicGraphData(db: Db, range: DateRange | null = null): GraphData {
   const topics = listTopics(db);
   const tree = getLibraryTree(db, range);
   // visible session id -> {title, msgCount, compactCount, cwd, lastActivity}

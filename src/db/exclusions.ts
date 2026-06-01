@@ -1,21 +1,21 @@
-import type Database from "better-sqlite3";
+import type { Db } from "./init.js";
 
 /** True if `path` equals an excluded prefix or sits under one (prefix-safe). */
 export function isExcludedPath(path: string, prefixes: string[]): boolean {
   return prefixes.some((p) => path === p || path.startsWith(p + "/"));
 }
 
-export function addExclusion(db: Database.Database, prefix: string): void {
+export function addExclusion(db: Db, prefix: string): void {
   db.prepare(
     "INSERT OR IGNORE INTO excluded_prefixes (prefix, created_at) VALUES (?, ?)"
   ).run(prefix, Date.now());
 }
 
-export function removeExclusion(db: Database.Database, prefix: string): void {
+export function removeExclusion(db: Db, prefix: string): void {
   db.prepare("DELETE FROM excluded_prefixes WHERE prefix = ?").run(prefix);
 }
 
-export function listExclusions(db: Database.Database): string[] {
+export function listExclusions(db: Db): string[] {
   return (
     db.prepare("SELECT prefix FROM excluded_prefixes ORDER BY prefix").all() as Array<{
       prefix: string;
@@ -27,19 +27,19 @@ export function listExclusions(db: Database.Database): string[] {
 export type RuleKind = "session" | "phrase" | "regex";
 export type ExclusionRule = { id: number; kind: RuleKind; value: string };
 
-export function addRule(db: Database.Database, kind: RuleKind, value: string): void {
+export function addRule(db: Db, kind: RuleKind, value: string): void {
   const v = value.trim();
   if (!v) return;
   db.prepare("INSERT OR IGNORE INTO excluded_rules (kind, value, created_at) VALUES (?, ?, ?)").run(kind, v, Date.now());
 }
-export function removeRule(db: Database.Database, id: number): void {
+export function removeRule(db: Db, id: number): void {
   db.prepare("DELETE FROM excluded_rules WHERE id = ?").run(id);
 }
-export function listRules(db: Database.Database): ExclusionRule[] {
+export function listRules(db: Db): ExclusionRule[] {
   return db.prepare("SELECT id, kind, value FROM excluded_rules ORDER BY created_at DESC").all() as ExclusionRule[];
 }
 /** Cheap signature of the rule set (for cache keys). */
-export function rulesSignature(db: Database.Database): string {
+export function rulesSignature(db: Db): string {
   return listRules(db).map((r) => `${r.kind}:${r.value}`).join("|");
 }
 
@@ -53,7 +53,7 @@ export function rulesSignature(db: Database.Database): string {
  * under `/a/backend`) are correctly NOT matched.
  */
 export function exclusionCondition(
-  db: Database.Database,
+  db: Db,
   col = "project_dir"
 ): { sql: string; params: Record<string, string> } {
   const prefixes = listExclusions(db);
@@ -75,7 +75,7 @@ export function exclusionCondition(
  * `sessions` table (both columns present).
  */
 export function sessionKeepCondition(
-  db: Database.Database
+  db: Db
 ): { sql: string; params: Record<string, string> } {
   const prefixes = listExclusions(db);
   const rules = listRules(db);

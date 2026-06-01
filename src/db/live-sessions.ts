@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { Db } from "./init.js";
 import type { LiveInstance } from "../watch/registry.js";
 
 export type LiveRow = {
@@ -30,7 +30,7 @@ function mapRow(r: RawRow): LiveRow {
 }
 
 /** Insert or refresh a running row. Clears any prior ended state; first_seen is kept on refresh. */
-export function upsertLive(db: Database.Database, inst: LiveInstance, now: number): void {
+export function upsertLive(db: Db, inst: LiveInstance, now: number): void {
   db.prepare(`
     INSERT INTO live_sessions
       (session_id, pid, cwd, name, status, version, started_at, first_seen, last_seen, ended_at, ended_reason)
@@ -45,13 +45,13 @@ export function upsertLive(db: Database.Database, inst: LiveInstance, now: numbe
   });
 }
 
-export function markEnded(db: Database.Database, sessionId: string, at: number, reason: "exited" | "restart"): void {
+export function markEnded(db: Db, sessionId: string, at: number, reason: "exited" | "restart"): void {
   db.prepare("UPDATE live_sessions SET ended_at=?, ended_reason=? WHERE session_id=? AND ended_at IS NULL")
     .run(at, reason, sessionId);
 }
 
 /** Running rows first (by last_seen desc), then ended rows with ended_at >= endedSince (by ended_at desc). */
-export function listLive(db: Database.Database, opts: { endedSince?: number } = {}): LiveRow[] {
+export function listLive(db: Db, opts: { endedSince?: number } = {}): LiveRow[] {
   const since = opts.endedSince ?? 0;
   const rows = db.prepare(`
     SELECT * FROM live_sessions
@@ -62,7 +62,7 @@ export function listLive(db: Database.Database, opts: { endedSince?: number } = 
 }
 
 /** Of the given session ids, which exist in the indexed `sessions` table. */
-export function indexedSessionIds(db: Database.Database, ids: string[]): Set<string> {
+export function indexedSessionIds(db: Db, ids: string[]): Set<string> {
   if (ids.length === 0) return new Set();
   const placeholders = ids.map(() => "?").join(",");
   const rows = db.prepare(`SELECT id FROM sessions WHERE id IN (${placeholders})`).all(...ids) as Array<{ id: string }>;

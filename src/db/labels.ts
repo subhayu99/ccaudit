@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { Db } from "./init.js";
 import { createHash } from "node:crypto";
 import type { Segment } from "../lib/segment.js";
 
@@ -17,7 +17,7 @@ export type SaveLabelsInput = {
   costUsd: number;
 };
 
-export function saveLabels(db: Database.Database, rec: SaveLabelsInput): void {
+export function saveLabels(db: Db, rec: SaveLabelsInput): void {
   db.prepare(
     `INSERT INTO segment_labels (session_id, spine_hash, labels_json, model, cost_usd, created_at)
      VALUES (@sessionId, @spineHash, @labelsJson, @model, @costUsd, @createdAt)
@@ -38,7 +38,7 @@ export function saveLabels(db: Database.Database, rec: SaveLabelsInput): void {
 }
 
 export function getLabels(
-  db: Database.Database,
+  db: Db,
   sessionId: string
 ): { spineHash: string; labels: string[] } | null {
   const row = db

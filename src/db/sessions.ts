@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { Db } from "./init.js";
 import type { Session } from "../types.js";
 import { exclusionCondition, sessionKeepCondition } from "./exclusions.js";
 
@@ -49,7 +49,7 @@ function parseTokenUsage(raw: string | null): Session["tokenUsage"] {
   try { return JSON.parse(raw) as Session["tokenUsage"]; } catch { return null; }
 }
 
-export function upsertSession(db: Database.Database, s: Session): void {
+export function upsertSession(db: Db, s: Session): void {
   db.prepare(
     `INSERT INTO sessions
        (id, project_dir, project_label, file_path, file_mtime, file_size,
@@ -79,13 +79,13 @@ export function upsertSession(db: Database.Database, s: Session): void {
   ).run({ ...s, tokenUsage: s.tokenUsage ? JSON.stringify(s.tokenUsage) : null });
 }
 
-export function getSession(db: Database.Database, id: string): Session | null {
+export function getSession(db: Db, id: string): Session | null {
   const row = db.prepare("SELECT * FROM sessions WHERE id = ?").get(id) as SessionRowSql | undefined;
   return row ? rowToSession(row) : null;
 }
 
 /** Fetch many sessions in one query, returned as a Map keyed by id (avoids N+1 round-trips). */
-export function getSessionsByIds(db: Database.Database, ids: string[]): Map<string, Session> {
+export function getSessionsByIds(db: Db, ids: string[]): Map<string, Session> {
   const out = new Map<string, Session>();
   const unique = [...new Set(ids)];
   if (unique.length === 0) return out;
@@ -102,7 +102,7 @@ export function getSessionsByIds(db: Database.Database, ids: string[]): Map<stri
 
 /** Remove a session and everything keyed to it (messages cascade + FTS trigger; topic/label
  *  rows have no FK so are deleted explicitly). Used to evict ccaudit's own tool meta-sessions. */
-export function deleteSession(db: Database.Database, id: string): void {
+export function deleteSession(db: Db, id: string): void {
   db.transaction(() => {
     db.prepare("DELETE FROM messages WHERE session_id = ?").run(id); // fires the messages_fts trigger
     db.prepare("DELETE FROM topic_members WHERE session_id = ?").run(id);
@@ -112,13 +112,13 @@ export function deleteSession(db: Database.Database, id: string): void {
 }
 
 /** Set a generated session title. Survives reindex via the COALESCE upsert. */
-export function updateAiTitle(db: Database.Database, id: string, title: string): void {
+export function updateAiTitle(db: Db, id: string, title: string): void {
   db.prepare("UPDATE sessions SET ai_title = ? WHERE id = ?").run(title, id);
 }
 
 /** Sessions lacking a usable title (or all, when `force`), most-recent first. */
 export function listSessionsNeedingTitle(
-  db: Database.Database,
+  db: Db,
   force = false
 ): Array<{ id: string; firstPrompt: string | null }> {
   const where = force ? "" : "WHERE ai_title IS NULL OR ai_title = ''";
@@ -133,11 +133,11 @@ export type ListSessionsOptions = {
   projectDir?: string;
 };
 
-export function listSessions(db: Database.Database, opts: ListSessionsOptions = {}): Session[] {
+export function listSessions(db: Db, opts: ListSessionsOptions = {}): Session[] {
   const limit = opts.limit ?? 100;
   const offset = opts.offset ?? 0;
   const where: string[] = [];
-  const params: Record<string, unknown> = { limit, offset };
+  const params: Record<string, string | number> = { limit, offset };
   if (opts.projectDir) {
     where.push("project_dir = @projectDir");
     params.projectDir = opts.projectDir;
@@ -155,7 +155,7 @@ export function listSessions(db: Database.Database, opts: ListSessionsOptions = 
   return rows.map(rowToSession);
 }
 
-export function getSessionByFilePath(db: Database.Database, filePath: string): Session | null {
+export function getSessionByFilePath(db: Db, filePath: string): Session | null {
   const row = db
     .prepare("SELECT * FROM sessions WHERE file_path = ?")
     .get(filePath) as SessionRowSql | undefined;
@@ -169,7 +169,7 @@ export type ProjectSummary = {
   lastActivity: number | null;
 };
 
-export function listProjects(db: Database.Database): ProjectSummary[] {
+export function listProjects(db: Db): ProjectSummary[] {
   const excl = exclusionCondition(db);
   const rows = db
     .prepare(

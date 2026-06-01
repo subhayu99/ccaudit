@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { Db } from "./init.js";
 import { listWorkdirs } from "./workdirs.js";
 import { computeRepoComponents } from "../identity/components.js";
 import { listExclusions, sessionKeepCondition, rulesSignature } from "./exclusions.js";
@@ -74,11 +74,11 @@ type LibRow = {
 // Per-connection memo cache for getLibraryTree. Keyed by Database instance so
 // tests (and multiple DBs) never cross-contaminate. Invalidated when the cheap
 // signature (newest indexed_at, session count, exclusion set) changes.
-const treeCache = new WeakMap<Database.Database, { key: string; tree: LibraryTree }>();
+const treeCache = new WeakMap<Db, { key: string; tree: LibraryTree }>();
 
 /** Cheap signature that changes whenever the tree would differ: newest indexed_at,
  *  total session count, and the (small) set of excluded prefixes. */
-function libraryTreeKey(db: Database.Database): string {
+function libraryTreeKey(db: Db): string {
   const meta = db
     .prepare("SELECT MAX(indexed_at) AS maxIndexedAt, COUNT(*) AS sessionCount FROM sessions")
     .get() as { maxIndexedAt: number | null; sessionCount: number };
@@ -86,7 +86,7 @@ function libraryTreeKey(db: Database.Database): string {
   return `${meta.maxIndexedAt ?? ""}|${meta.sessionCount}|${exclusionsSig}|${rulesSignature(db)}`;
 }
 
-export function getLibraryTree(db: Database.Database, range: DateRange | null = null): LibraryTree {
+export function getLibraryTree(db: Db, range: DateRange | null = null): LibraryTree {
   // Range participates in the cache key so a filtered tree never gets served for "all time".
   const key = `${libraryTreeKey(db)}|${range ? `${range.from}-${range.to}` : "all"}`;
   const cached = treeCache.get(db);
@@ -97,7 +97,7 @@ export function getLibraryTree(db: Database.Database, range: DateRange | null = 
   return tree;
 }
 
-function buildLibraryTree(db: Database.Database, range: DateRange | null): LibraryTree {
+function buildLibraryTree(db: Db, range: DateRange | null): LibraryTree {
   const workdirs = listWorkdirs(db);
   const { repos, repoByPath } = computeRepoComponents(workdirs);
   const existsByPath = new Map(workdirs.map((w) => [w.path, w.existsOnDisk]));
@@ -175,7 +175,7 @@ export type GroupedList = {
 const DAY_ORDER: DayLabel[] = ["Today", "Yesterday", "Earlier this week", "Older"];
 
 export function listSessionsGrouped(
-  db: Database.Database,
+  db: Db,
   sel: Selection,
   nowMs: number,
   precomputedTree?: LibraryTree,

@@ -1,8 +1,10 @@
 /**
- * If `err` is a native-module load failure for better-sqlite3 — no prebuilt binary
- * for this Node version + no build tools to compile one — return a friendly,
- * actionable message. Otherwise null. Turns the raw "Could not locate the bindings
- * file" stack trace into something a non-developer can act on.
+ * If `err` is a native-module load failure (a prebuilt `.node` binary missing for
+ * this Node version + no build tools to compile one), return a friendly, actionable
+ * message. Otherwise null. ccaudit's database engine is now Node's built-in
+ * node:sqlite (no native module), but a transitive native dep (e.g. sharp, used by
+ * Astro for image optimization) could still fail to load — this keeps the raw
+ * "Could not locate the bindings file" trace from reaching the user unexplained.
  */
 export function nativeBindingHelp(err: unknown): string | null {
   const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "";
@@ -18,8 +20,8 @@ export function nativeBindingHelp(err: unknown): string | null {
   const where = `${process.platform}-${process.arch}`;
   return [
     "",
-    "✗ ccaudit couldn't load its database engine (better-sqlite3) — a native module",
-    `  that needs a binary matching your Node.js version (${process.version}, ${where}).`,
+    "✗ ccaudit couldn't load a native module it depends on — it needs a binary",
+    `  matching your Node.js version (${process.version}, ${where}).`,
     "",
     "  There's no prebuilt binary for your Node version and no build tools to compile",
     "  one. Two easy fixes:",

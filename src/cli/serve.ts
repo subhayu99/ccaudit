@@ -12,6 +12,7 @@ import { createInterface } from "node:readline";
 import { readConfig, writeConfig } from "../lib/config.js";
 import { installAgent, agentInstalled } from "../lib/launchd.js";
 import { setTimeout as wait } from "node:timers/promises";
+import { sqliteChildArgs } from "../lib/sqlite-runtime.js";
 
 /** Package root = parent of the CLI bundle (dist/index.js → <pkg>). */
 function packageRoot(): string {
@@ -108,7 +109,7 @@ export async function serveCommand(opts: { port?: string; open?: boolean; watch?
 
   console.log(kleur.dim(`Starting server on http://127.0.0.1:${port} ...`));
   const server = built
-    ? spawn(process.execPath, [entry], {
+    ? spawn(process.execPath, [...sqliteChildArgs(), entry], {
         stdio: "inherit",
         env: { ...process.env, HOST: "127.0.0.1", PORT: port },
       })

@@ -12,6 +12,26 @@ import { watchCommand, watchTickCommand } from "./watch.js";
 import { liveCommand } from "./live.js";
 import { nativeBindingHelp } from "./native-error.js";
 import { version as pkgVersion } from "../../package.json";
+import { spawnSync } from "node:child_process";
+import { sqliteNeedsFlag, nodeTooOldForSqlite } from "../lib/sqlite-runtime.js";
+
+// Suppress the experimental-SQLite warning for a clean CLI.
+const _emitWarning = process.emitWarning.bind(process);
+process.emitWarning = ((warning: unknown, ...rest: unknown[]) => {
+  const msg = typeof warning === "string" ? warning : (warning as { message?: string })?.message ?? "";
+  if (/SQLite is an experimental feature/i.test(msg)) return;
+  return (_emitWarning as (w: unknown, ...r: unknown[]) => void)(warning, ...rest);
+}) as typeof process.emitWarning;
+
+// Ensure node:sqlite is usable; on Node 22.5–23.3 transparently re-exec with the flag.
+if (nodeTooOldForSqlite()) {
+  console.error(`\n✗ ccaudit needs Node 22.5 or newer (you are on ${process.version}).`);
+  console.error(`  Install Node 22 LTS or 24:  nvm install 24 && nvm use 24\n`);
+  process.exit(1);
+} else if (sqliteNeedsFlag()) {
+  const res = spawnSync(process.execPath, ["--experimental-sqlite", "--disable-warning=ExperimentalWarning", process.argv[1] ?? "", ...process.argv.slice(2)], { stdio: "inherit" });
+  process.exit(res.status ?? 0);
+}
 
 const program = new Command();
 program

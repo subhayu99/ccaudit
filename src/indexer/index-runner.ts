@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { Db } from "../db/init.js";
 import { mkdirSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { walkProjects } from "./walk.js";
@@ -43,7 +43,7 @@ function logIndexError(line: string): void {
 }
 
 export async function indexAll(
-  db: Database.Database,
+  db: Db,
   opts: IndexRunOptions = {}
 ): Promise<IndexRunStats> {
   const baseDir = opts.baseDir ?? CLAUDE_PROJECTS_DIR;

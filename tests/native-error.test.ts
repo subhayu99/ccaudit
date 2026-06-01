@@ -12,7 +12,7 @@ describe("nativeBindingHelp", () => {
   it("detects the better-sqlite3 bindings-not-found error and returns actionable guidance", () => {
     const help = nativeBindingHelp(FRIEND_ERR);
     expect(help).toBeTruthy();
-    expect(help!).toContain("better-sqlite3");
+    expect(help!).toMatch(/native module/i);
     expect(help!).toMatch(/Node 22|Node 24|nvm/); // points at a supported Node
     expect(help!).toMatch(/xcode-select|build-essential/); // build-tools fallback
     expect(help!).toContain(process.version); // shows the user's actual Node version

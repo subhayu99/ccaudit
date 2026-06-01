@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { Db } from "./init.js";
 import type { IdentityKind } from "../identity/resolve.js";
 
 /** A workdir row plus its captured commit-hash token-set. */
@@ -37,7 +37,7 @@ function rowToRecord(r: WorkdirRowSql, tokens: string[]): WorkdirRecord {
 }
 
 /** Insert or replace a workdir and its token-set atomically. */
-export function upsertWorkdir(db: Database.Database, w: WorkdirRecord): void {
+export function upsertWorkdir(db: Db, w: WorkdirRecord): void {
   const tx = db.transaction(() => {
     db.prepare(
       `INSERT INTO workdirs
@@ -66,7 +66,7 @@ export function upsertWorkdir(db: Database.Database, w: WorkdirRecord): void {
   tx();
 }
 
-export function getWorkdir(db: Database.Database, path: string): WorkdirRecord | undefined {
+export function getWorkdir(db: Db, path: string): WorkdirRecord | undefined {
   const row = db.prepare("SELECT * FROM workdirs WHERE path = ?").get(path) as
     | WorkdirRowSql
     | undefined;
@@ -79,7 +79,7 @@ export function getWorkdir(db: Database.Database, path: string): WorkdirRecord |
   return rowToRecord(row, tokens);
 }
 
-export function listWorkdirs(db: Database.Database): WorkdirRecord[] {
+export function listWorkdirs(db: Db): WorkdirRecord[] {
   const rows = db.prepare("SELECT * FROM workdirs").all() as WorkdirRowSql[];
   const tokenRows = db.prepare("SELECT path, token FROM workdir_tokens").all() as Array<{
     path: string;
