@@ -78,9 +78,36 @@ ccaudit watch --install       # (macOS) background watcher so running sessions s
                               #   --uninstall  --status
 ```
 
-## MCP server
+## MCP server — let Claude query your own history
 
-`ccaudit mcp` exposes your indexed history to any MCP client (e.g. Claude Desktop) with tools to list, search, and fetch sessions plus index stats — so an agent can query your own past work.
+`ccaudit mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io) stdio server over your local index, so any MCP client (Claude Desktop, Claude Code, Cursor, …) can search and read your past Claude Code work — turning months of buried sessions into a tool your agent can actually call.
+
+**Tools exposed:**
+
+| Tool | What it does |
+|------|--------------|
+| `search_sessions` | Full-text search across every message — `fts` (smart, default), `exact`, or `regex` |
+| `list_sessions`   | Recent sessions, newest first; optional project filter |
+| `get_session`     | A session's metadata and (optionally) its full conversation, noise filtered |
+| `index_stats`     | Corpus-wide stats — session/message counts, spend, date span |
+
+**Wire it up** — Claude Code:
+
+```bash
+claude mcp add ccaudit -- npx -y @subhayu99/ccaudit mcp
+```
+
+…or Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "ccaudit": { "command": "npx", "args": ["-y", "@subhayu99/ccaudit", "mcp"] }
+  }
+}
+```
+
+Then just ask: *"Search my ccaudit history for when I set up the auth flow"* or *"What did I decide about the DB schema last month?"* — and Claude answers from your own past sessions. Read-only and 100% local.
 
 ## How it works
 
