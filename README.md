@@ -6,7 +6,7 @@
 
 **Browse, search, and audit your Claude Code session history — as a warm, Obsidian-style knowledge base in your browser.**
 
-[![npm](https://img.shields.io/npm/v/claudelens.svg?color=cf9152)](https://www.npmjs.com/package/claudelens)
+[![npm](https://img.shields.io/npm/v/@subhayu99/ccaudit.svg?color=cf9152)](https://www.npmjs.com/package/@subhayu99/ccaudit)
 &nbsp;[![license: MIT](https://img.shields.io/badge/license-MIT-d2a85f.svg)](./LICENSE)
 &nbsp;[![node >= 20](https://img.shields.io/badge/node-%3E%3D20-7fae7a.svg)](https://nodejs.org)
 &nbsp;![core runs offline](https://img.shields.io/badge/core-100%25%20offline-cf9152.svg)
@@ -25,17 +25,17 @@ Everything runs **locally**. Nothing leaves your machine.
 
 ## Quick start
 
-> Published on npm as **`claudelens`** (the name `ccaudit` was already taken). The installed command is **`ccaudit`** — and `claudelens` works as an alias.
+> Published on npm as **`@subhayu99/ccaudit`** (the bare name `ccaudit` was already taken). The installed command is just **`ccaudit`**.
 
 ```bash
-npx claudelens         # index + open the browser UI (http://127.0.0.1:4321)
+npx @subhayu99/ccaudit   # index + open the browser UI (http://127.0.0.1:4321)
 ```
 
 Or install globally:
 
 ```bash
-npm install -g claudelens
-ccaudit                # serve (default) — `claudelens` also works
+npm install -g @subhayu99/ccaudit
+ccaudit                  # serve (default)
 ```
 
 First run indexes `~/.claude/projects/`; subsequent runs only re-read changed files (an append-only fast path keeps reindex in the tens of milliseconds).

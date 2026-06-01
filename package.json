@@ -1,5 +1,5 @@
 {
-  "name": "claudelens",
+  "name": "@subhayu99/ccaudit",
   "version": "0.1.0",
   "description": "Browse, search, and audit your Claude Code session history",
   "type": "module",
@@ -14,7 +14,6 @@
     "url": "https://github.com/subhayu99/ccaudit/issues"
   },
   "keywords": [
-    "claudelens",
     "ccaudit",
     "claude",
     "claude-code",
@@ -26,8 +25,10 @@
     "developer-tools"
   ],
   "bin": {
-    "ccaudit": "dist/index.js",
-    "claudelens": "dist/index.js"
+    "ccaudit": "dist/index.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "dist/",
