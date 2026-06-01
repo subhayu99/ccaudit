@@ -6,6 +6,7 @@ import kleur from "kleur";
 import { openDb } from "../db/init.js";
 import { indexAll } from "../indexer/index-runner.js";
 import { createIndexReporter } from "./index-reporter.js";
+import { isPortFree, findFreePort, whoHasPort, formatPortInUse } from "./port.js";
 import { INDEX_DB_PATH, CLAUDE_PROJECTS_DIR } from "../paths.js";
 import { setTimeout as wait } from "node:timers/promises";
 
@@ -19,6 +20,18 @@ export async function serveCommand(opts: { port?: string; open?: boolean }): Pro
   const root = packageRoot();
   const entry = join(root, "dist-web", "server", "entry.mjs");
   const built = existsSync(entry);
+
+  // Fail fast — before the (possibly slow) indexing pass — if the port is taken,
+  // and tell the user exactly what's holding it and how to get unblocked.
+  const portNum = Number(port);
+  if (!(await isPortFree(portNum))) {
+    const holder = whoHasPort(portNum);
+    const free = await findFreePort(portNum + 1);
+    const [first, ...rest] = formatPortInUse(portNum, holder, free).split("\n");
+    console.error(kleur.red("✗ " + first));
+    for (const line of rest) console.error(kleur.dim(line));
+    process.exit(1);
+  }
 
   console.log(kleur.bold("ccaudit") + kleur.dim(" · indexing your Claude Code history"));
   console.log(kleur.dim(`${CLAUDE_PROJECTS_DIR} · 100% local, nothing is uploaded · first run only — re-runs are instant`));
