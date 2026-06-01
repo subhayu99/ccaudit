@@ -6,7 +6,8 @@
 
 **Browse, search, and audit your Claude Code session history — as a warm, Obsidian-style knowledge base in your browser.**
 
-[![license: MIT](https://img.shields.io/badge/license-MIT-d2a85f.svg)](./LICENSE)
+[![npm](https://img.shields.io/npm/v/claudelens.svg?color=cf9152)](https://www.npmjs.com/package/claudelens)
+&nbsp;[![license: MIT](https://img.shields.io/badge/license-MIT-d2a85f.svg)](./LICENSE)
 &nbsp;[![node >= 20](https://img.shields.io/badge/node-%3E%3D20-7fae7a.svg)](https://nodejs.org)
 &nbsp;![core runs offline](https://img.shields.io/badge/core-100%25%20offline-cf9152.svg)
 
@@ -24,15 +25,17 @@ Everything runs **locally**. Nothing leaves your machine.
 
 ## Quick start
 
+> Published on npm as **`claudelens`** (the name `ccaudit` was already taken). The installed command is **`ccaudit`** — and `claudelens` works as an alias.
+
 ```bash
-npx ccaudit            # index + open the browser UI (http://127.0.0.1:4321)
+npx claudelens         # index + open the browser UI (http://127.0.0.1:4321)
 ```
 
 Or install globally:
 
 ```bash
-npm install -g ccaudit
-ccaudit                # serve (default)
+npm install -g claudelens
+ccaudit                # serve (default) — `claudelens` also works
 ```
 
 First run indexes `~/.claude/projects/`; subsequent runs only re-read changed files (an append-only fast path keeps reindex in the tens of milliseconds).
