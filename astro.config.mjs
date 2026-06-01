@@ -1,4 +1,4 @@
-import { defineConfig } from "astro/config";
+import { defineConfig, passthroughImageService } from "astro/config";
 import node from "@astrojs/node";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -9,12 +9,12 @@ export default defineConfig({
   // CLI bundle at dist/index.js (both used to target dist/ and stomp each other).
   outDir: "./dist-web",
   server: { port: 4321, host: "127.0.0.1" },
+  // ccaudit ships only static images (logo/favicon) and uses plain <img>, never
+  // astro:assets. Use the passthrough image service so Astro never pulls in sharp —
+  // keeping the whole package free of native modules (the DB engine is node:sqlite).
+  image: { service: passthroughImageService() },
   vite: {
     plugins: [tailwindcss()],
-    ssr: {
-      // better-sqlite3 is a native module — exclude from SSR bundle
-      external: ["better-sqlite3"],
-    },
     optimizeDeps: {
       // Pre-bundle the d3 modules used by the graph page's client script so Vite's
       // dev-mode dependency scanner never has to discover them by parsing .astro
