@@ -8,7 +8,8 @@
 
 [![npm](https://img.shields.io/npm/v/@subhayu99/ccaudit.svg?color=cf9152)](https://www.npmjs.com/package/@subhayu99/ccaudit)
 &nbsp;[![license: MIT](https://img.shields.io/badge/license-MIT-d2a85f.svg)](./LICENSE)
-&nbsp;[![node >= 20](https://img.shields.io/badge/node-%3E%3D20-7fae7a.svg)](https://nodejs.org)
+&nbsp;[![node >= 22.5](https://img.shields.io/badge/node-%3E%3D22.5-7fae7a.svg)](https://nodejs.org)
+&nbsp;![zero native deps](https://img.shields.io/badge/native%20deps-zero-7fae7a.svg)
 &nbsp;![core runs offline](https://img.shields.io/badge/core-100%25%20offline-cf9152.svg)
 
 <img src="https://raw.githubusercontent.com/subhayu99/ccaudit/main/docs/demo.gif" alt="ccaudit demo" width="100%" />
@@ -21,7 +22,7 @@
 
 Claude Code stores every session as JSONL under `~/.claude/projects/`. Over time that becomes thousands of conversations scattered across clones, git worktrees, and one-off directories — and `/compact` quietly buries earlier history. **ccaudit** indexes all of it into a local SQLite database and gives you a fast reader to actually find, re-read, and make sense of what happened.
 
-Everything runs **locally**. Nothing leaves your machine.
+Everything runs **locally**, with **zero native dependencies** — the same on macOS, Linux, and Windows, on any Node 22.5+. Nothing leaves your machine unless you opt into the [AI features](#privacy).
 
 ## Quick start
 
@@ -40,7 +41,7 @@ ccaudit                  # serve (default)
 
 > **`ccaudit: command not found`?** A *local* `npm install @subhayu99/ccaudit` (without `-g`) only puts the binary in `./node_modules/.bin`, never on your `PATH` — so the bare `ccaudit` command won't resolve in any terminal, old or new. Use `npx @subhayu99/ccaudit` (zero-install), install globally with `-g` as above, or run the local copy with `npx ccaudit` from that project directory.
 
-> **Node version:** use an even-numbered LTS — **Node 22 LTS or Node 24** are safest. ccaudit's storage engine (better-sqlite3) ships prebuilt binaries for those; on a bleeding-edge or odd-numbered Node it may try to compile from source and need build tools (`xcode-select --install` on macOS).
+> **Requirements: Node 22.5+ — that's it.** ccaudit has **no native dependencies**: its database is Node's built-in SQLite (`node:sqlite`), so there's nothing to compile and no platform-specific binaries to match. It runs identically on macOS, Linux, and Windows, on any Node ≥ 22.5, with no build tools. (On Node 22.5–23.3 it transparently enables Node's `--experimental-sqlite` flag for you; Node 24+ needs nothing.)
 
 First run indexes `~/.claude/projects/`; subsequent runs only re-read changed files (an append-only fast path keeps reindex in the tens of milliseconds).
 
@@ -83,12 +84,12 @@ ccaudit watch --install       # (macOS) background watcher so running sessions s
 
 ## How it works
 
-- **Indexer** walks `~/.claude/projects/`, parses each JSONL session, and stores sessions + messages in SQLite (`~/.ccaudit/index.db`), with an FTS5 virtual table for search.
+- **Indexer** walks `~/.claude/projects/`, parses each JSONL session, and stores sessions + messages in a local SQLite database (`~/.ccaudit/index.db`) via Node's built-in `node:sqlite`, with an FTS5 virtual table for search.
 - **Repo identity (deterministic).** Identity rests only on things that are intrinsic, immutable, and shared — i.e. **git commit hashes**. At index time, while a directory still exists, ccaudit captures a bounded set of its commit hashes (plus a credential-stripped remote). Working directories that share any commit hash are unioned into one repo via union-find. Shallow clones (no root commit) still match on recent commits. No VCS → no provable cross-copy identity (and none is invented). Captured remotes are **always stripped of embedded credentials**.
 
 ## Tech
 
-Astro 5 SSR (Node standalone) · better-sqlite3 + FTS5 · Tailwind v4 · d3-force · `@modelcontextprotocol/sdk` · tsup CLI. Tested with Vitest.
+Astro 5 SSR (Node standalone) · **`node:sqlite`** (Node's built-in SQLite) + FTS5 · Tailwind v4 · d3-force · `@modelcontextprotocol/sdk` · tsup CLI. Tested with Vitest. **No native dependencies.**
 
 ## Privacy
 
