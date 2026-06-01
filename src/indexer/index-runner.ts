@@ -11,10 +11,17 @@ import { isExcludedPath, listExclusions } from "../db/exclusions.js";
 import { CLAUDE_PROJECTS_DIR, LOGS_DIR } from "../paths.js";
 import type { Session } from "../types.js";
 
+// Structured progress so callers can render a live spinner/counter instead of a
+// scrolling log: scan (we now know the total) → index (counting up) → resolve.
+export type IndexProgress =
+  | { phase: "scan"; total: number }
+  | { phase: "index"; current: number; total: number; label: string }
+  | { phase: "resolve" };
+
 export type IndexRunOptions = {
   baseDir?: string;        // default: ~/.claude/projects
   force?: boolean;         // re-index even if mtime+size match
-  onProgress?: (msg: string) => void;
+  onProgress?: (p: IndexProgress) => void;
 };
 
 export type IndexRunStats = {
@@ -45,9 +52,12 @@ export async function indexAll(
     malformedLines: 0, errors: 0, workdirsResolved: 0,
   };
   const entries = walkProjects(baseDir);
+  opts.onProgress?.({ phase: "scan", total: entries.length });
   const exclusions = listExclusions(db);
   for (const e of entries) {
     stats.filesSeen += 1;
+    // Fire on every entry (indexed or skipped) so the counter advances smoothly.
+    opts.onProgress?.({ phase: "index", current: stats.filesSeen, total: entries.length, label: e.projectLabel });
     // Skip indexing directories the user has hidden (matched on the recorded
     // cwd, falling back to the project dir). Already-indexed rows are kept and
     // simply filtered from views, so un-hiding is instant.
@@ -134,16 +144,13 @@ export async function indexAll(
     });
     tx();
     stats.sessionsIndexed += 1;
-    opts.onProgress?.(`indexed ${e.projectLabel}/${e.sessionId} (${state.messageCount} msgs${appendOnly ? ", append" : ""})`);
   }
 
   // Layer 1 repo-identity: capture immutable tokens for each distinct cwd
   // while the directory still exists. Idempotent across runs (skips already
   // captured workdirs unless forced).
+  opts.onProgress?.({ phase: "resolve" });
   stats.workdirsResolved = resolveWorkdirs(db, { force: opts.force });
-  if (stats.workdirsResolved > 0) {
-    opts.onProgress?.(`resolved ${stats.workdirsResolved} workdir identities`);
-  }
 
   return stats;
 }

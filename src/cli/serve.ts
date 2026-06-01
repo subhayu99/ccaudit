@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import kleur from "kleur";
 import { openDb } from "../db/init.js";
 import { indexAll } from "../indexer/index-runner.js";
+import { createIndexReporter } from "./index-reporter.js";
 import { INDEX_DB_PATH, CLAUDE_PROJECTS_DIR } from "../paths.js";
 import { setTimeout as wait } from "node:timers/promises";
 
@@ -19,14 +20,23 @@ export async function serveCommand(opts: { port?: string; open?: boolean }): Pro
   const entry = join(root, "dist-web", "server", "entry.mjs");
   const built = existsSync(entry);
 
-  console.log(kleur.dim("Indexing sessions..."));
+  console.log(kleur.bold("ccaudit") + kleur.dim(" · indexing your Claude Code history"));
+  console.log(kleur.dim(`${CLAUDE_PROJECTS_DIR} · 100% local, nothing is uploaded · first run only — re-runs are instant`));
   const db = openDb(INDEX_DB_PATH);
+  const reporter = createIndexReporter();
+  const started = Date.now();
   try {
-    const stats = await indexAll(db, { baseDir: CLAUDE_PROJECTS_DIR });
-    console.log(kleur.dim(`  ${stats.sessionsIndexed} indexed, ${stats.sessionsSkipped} skipped`));
+    const stats = await indexAll(db, { baseDir: CLAUDE_PROJECTS_DIR, onProgress: reporter.onProgress });
     if (stats.sessionsIndexed === 0 && stats.sessionsSkipped === 0) {
+      reporter.stop();
       console.log(kleur.yellow(`  No Claude Code sessions found in ${CLAUDE_PROJECTS_DIR}`));
       console.log(kleur.dim(`  Set CCAUDIT_PROJECTS_DIR to point elsewhere, then re-run.`));
+    } else {
+      const secs = Math.max(1, Math.round((Date.now() - started) / 1000));
+      const parts = [`Indexed ${stats.sessionsIndexed.toLocaleString()} session${stats.sessionsIndexed === 1 ? "" : "s"}`];
+      if (stats.sessionsSkipped) parts.push(`${stats.sessionsSkipped.toLocaleString()} unchanged`);
+      if (stats.workdirsResolved) parts.push(`${stats.workdirsResolved} repositor${stats.workdirsResolved === 1 ? "y" : "ies"}`);
+      reporter.done(`${parts.join(" · ")} · ${secs}s`);
     }
   } finally {
     db.close();
