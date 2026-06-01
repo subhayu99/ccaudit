@@ -9,6 +9,8 @@ export const CCAUDIT_DIR = ccauditHome();
 export const INDEX_DB_PATH = join(ccauditHome(), "index.db");
 export const EXPORTS_DIR = join(ccauditHome(), "exports");
 export const LOGS_DIR = join(ccauditHome(), "logs");
+export const CLAUDE_SESSIONS_DIR = process.env.CCAUDIT_SESSIONS_DIR || join(home(), ".claude", "sessions");
+export const CONFIG_PATH = join(ccauditHome(), "config.json");
 
 // Decode the dir-hash back to a real path. Claude Code stores
 // ~/foo/bar as "-foo-bar" (slashes -> dashes, leading slash -> leading dash).
