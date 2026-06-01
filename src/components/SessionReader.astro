@@ -10,7 +10,7 @@ import { formatTimestamp, truncate, shortSessionId } from "../lib/render";
 import { cleanPromptText } from "../lib/clean-prompt";
 import { segmentSession } from "../lib/segment";
 import { getLabels, spineHash } from "../db/labels";
-import { posixQuote } from "../lib/shell";
+import { buildResumeCommand } from "../lib/resume";
 import { sessionCostUsd, formatUsd, totalTokens } from "../lib/pricing";
 
 interface Props { sessionId: string; }
@@ -96,9 +96,7 @@ const title = session
 // the dir-hash and is not a safe filesystem path, so we never shell out to it.
 // POSIX-quote the cwd to prevent shell injection from paths with spaces/quotes.
 const resumeCwd = session?.cwd && existsSync(session.cwd) ? session.cwd : null;
-const resumeCmd = resumeCwd
-  ? `cd ${posixQuote(resumeCwd)}\nclaude --resume ${sessionId}`
-  : `claude --resume ${sessionId}  # original cwd unknown`;
+const resumeCmd = buildResumeCommand(sessionId, resumeCwd);
 const noiseCount = classified.length - visible.length;
 
 // minimap landmarks: user turns + compacts
