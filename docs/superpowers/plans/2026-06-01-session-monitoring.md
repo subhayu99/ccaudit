@@ -175,6 +175,23 @@ describe("readLiveRegistry", () => {
   it("returns [] when the directory does not exist", () => {
     expect(readLiveRegistry({ dir: join(dir, "nope"), isAlive: () => true })).toEqual([]);
   });
+
+  // PID-reuse-across-reboot guard (validated by PoC: ~/.claude/sessions files survive a
+  // reboot; their pids may be dead OR reused by unrelated processes). A genuinely-live
+  // Claude session's startedAt is always AFTER the machine boot, so anything older is a
+  // pre-reboot leftover even if its pid now resolves to some other live process.
+  it("drops entries whose startedAt predates bootTime (stale pre-reboot files)", () => {
+    write(100, { pid: 100, sessionId: "before", startedAt: 500 });  // started before boot
+    write(200, { pid: 200, sessionId: "after", startedAt: 1500 });  // started after boot
+    const live = readLiveRegistry({ dir, isAlive: () => true, bootTime: 1000 });
+    expect(live.map((l) => l.sessionId)).toEqual(["after"]);
+  });
+
+  it("keeps entries with a null/unknown startedAt even when bootTime is set", () => {
+    writeFileSync(join(dir, "300.json"), JSON.stringify({ pid: 300, sessionId: "unknown" })); // no startedAt
+    const live = readLiveRegistry({ dir, isAlive: () => true, bootTime: 1000 });
+    expect(live.map((l) => l.sessionId)).toEqual(["unknown"]);
+  });
 });
 ```
 
@@ -210,6 +227,13 @@ export type ReadRegistryOpts = {
   dir?: string;
   /** Liveness probe. Defaults to `process.kill(pid, 0)` (false on ESRCH). */
   isAlive?: (pid: number) => boolean;
+  /**
+   * Machine boot time (epoch ms). When > 0, entries whose `startedAt` predates it
+   * are dropped — they are pre-reboot leftovers (the sessions dir survives reboots)
+   * whose pid may now be reused by an unrelated process. Entries with an unknown
+   * startedAt are kept. Pass `getBootTime()`.
+   */
+  bootTime?: number;
 };
 
 function defaultIsAlive(pid: number): boolean {
@@ -227,6 +251,7 @@ function num(v: unknown): number | null { return typeof v === "number" && Number
 export function readLiveRegistry(opts: ReadRegistryOpts = {}): LiveInstance[] {
   const dir = opts.dir ?? CLAUDE_SESSIONS_DIR;
   const isAlive = opts.isAlive ?? defaultIsAlive;
+  const bootTime = opts.bootTime ?? 0;
   let names: string[];
   try { names = readdirSync(dir); }
   catch { return []; } // ENOENT etc. — no registry, nothing running we can see
@@ -243,11 +268,14 @@ export function readLiveRegistry(opts: ReadRegistryOpts = {}): LiveInstance[] {
     const sessionId = str(o.sessionId);
     if (pid === null || !sessionId) continue;
     if (!isAlive(pid)) continue;
+    const startedAt = num(o.startedAt);
+    // Pre-reboot leftover whose pid may be reused: a live session always started after boot.
+    if (bootTime > 0 && startedAt !== null && startedAt < bootTime) continue;
     out.push({
       pid, sessionId,
       cwd: str(o.cwd), name: str(o.name), status: str(o.status),
       waitingFor: str(o.waitingFor), version: str(o.version),
-      startedAt: num(o.startedAt), updatedAt: num(o.updatedAt),
+      startedAt, updatedAt: num(o.updatedAt),
     });
   }
   return out;
@@ -1062,7 +1090,8 @@ export function watchTickCommand(): void {
   const db = openDb(INDEX_DB_PATH);
   try {
     const now = Date.now();
-    const summary = runWatchTick(db, { now, bootTime: getBootTime(now), registry: () => readLiveRegistry() });
+    const bootTime = getBootTime(now);
+    const summary = runWatchTick(db, { now, bootTime, registry: () => readLiveRegistry({ bootTime }) });
     // Plain stdout — launchd captures it into ~/.ccaudit/logs/watch.log.
     console.log(`[${new Date(now).toISOString()}] tick — running=${summary.running} endedNow=${summary.endedNow}`);
   } finally {
@@ -1184,6 +1213,7 @@ import { openDb } from "../db/init.js";
 import { readLiveRegistry } from "../watch/registry.js";
 import { listLive, type LiveRow } from "../db/live-sessions.js";
 import { buildResumeCommand } from "../lib/resume.js";
+import { getBootTime } from "../lib/boot-time.js";
 import { relativeTime } from "../lib/render.js";
 import { INDEX_DB_PATH } from "../paths.js";
 
@@ -1197,7 +1227,7 @@ export function liveCommand(): void {
   const db = openDb(INDEX_DB_PATH);
   try {
     const now = Date.now();
-    const reg = readLiveRegistry();
+    const reg = readLiveRegistry({ bootTime: getBootTime(now) });
     const regIds = new Set(reg.map((r) => r.sessionId));
     const history = listLive(db, { endedSince: now - DAY });
     const dbById = new Map(history.map((r) => [r.sessionId, r]));
@@ -1429,6 +1459,7 @@ import { existsSync } from "node:fs";
 import { getDb } from "../../db/init.js";
 import { readLiveRegistry } from "../../watch/registry.js";
 import { listLive, indexedSessionIds } from "../../db/live-sessions.js";
+import { getBootTime } from "../../lib/boot-time.js";
 
 const DAY = 86_400_000;
 
@@ -1439,7 +1470,7 @@ function json(obj: unknown, status = 200): Response {
 export const GET: APIRoute = () => {
   const now = Date.now();
   const db = getDb();
-  const reg = readLiveRegistry();
+  const reg = readLiveRegistry({ bootTime: getBootTime(now) });
   const regIds = new Set(reg.map((r) => r.sessionId));
   const history = listLive(db, { endedSince: now - DAY });
   const dbById = new Map(history.map((r) => [r.sessionId, r]));
@@ -1516,6 +1547,7 @@ import { listTopics } from "../db/topics";
 import { resolveRange } from "../db/date-range";
 import { readLiveRegistry } from "../watch/registry";
 import { listLive, indexedSessionIds } from "../db/live-sessions";
+import { getBootTime } from "../lib/boot-time";
 import { agentInstalled } from "../lib/launchd";
 import { buildResumeCommand } from "../lib/resume";
 import { relativeTime } from "../lib/render";
@@ -1527,7 +1559,7 @@ const db = getDb();
 const tree = getLibraryTree(db, range);
 const topics = listTopics(db, range);
 
-const reg = readLiveRegistry();
+const reg = readLiveRegistry({ bootTime: getBootTime(now) });
 const regIds = new Set(reg.map((r) => r.sessionId));
 const history = listLive(db, { endedSince: now - DAY });
 const dbById = new Map(history.map((r) => [r.sessionId, r]));
@@ -1797,6 +1829,8 @@ git commit -m "test(watch): full-suite green + manual restart/exit verification 
 - §8 `live` CLI + registration → Tasks 9 & 10 ✓.
 - §Testing (registry, runWatchTick, buildPlist, live-sessions ops, resume builder) → Tasks 2,3,5,7,8 ✓; install/launchctl/TTY covered by manual smoke (Tasks 9, 11, 15) per the spec.
 - §Edge cases (stale pid file, PID reuse, multiple per cwd, watcher-not-installed, malformed file, non-macOS, headless) → covered across Tasks 2, 3, 5, 11, 13.
+
+**PoC-driven correction (2026-06-01):** A live PoC against the real `~/.claude/sessions` registry confirmed the tracking chain (liveness flips on real process death; 9/10 `sessionId`s join the index; a just-started session is correctly *not yet* indexed → `isIndexed:false`). It also disproved the spec's "registry is empty after reboot" assumption: the files survive reboots. Fix folded into Task 2 — `readLiveRegistry({ bootTime })` drops any entry whose `startedAt < bootTime` (a live session always starts after boot), threaded into the tick (Task 9), `live` CLI (Task 10), `/api/live` (Task 12), and `/live` page (Task 13). All readers pass `getBootTime()`.
 
 **Type consistency:** `LiveInstance` (Task 2) ← consumed by `upsertLive` (Task 3) and `runWatchTick` (Task 5). `LiveRow` (Task 3) ← consumed by `listLive` callers (Tasks 9, 10, 12, 13). `buildResumeCommand(sessionId, cwd)` signature identical across Tasks 7, 10, 12, 13. `WATCH_LABEL`/`buildPlist`/`installAgent`/`agentInstalled`/`uninstallAgent` (Task 8) used consistently in Tasks 9 & 11. `getBootTime`/`parseDarwinBoottimeSec` (Task 4) used in Tasks 5(test) & 9. `readConfig`/`writeConfig` (Task 6) used in Tasks 9 & 11. Commander tri-state `opts.watch` consistent between Task 11's option defs and the `serveCommand` signature.
 

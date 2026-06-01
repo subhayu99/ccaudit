@@ -114,13 +114,14 @@ CREATE INDEX IF NOT EXISTS idx_live_last_seen ON live_sessions(last_seen DESC);
 
 1. Watcher ticks every ~30s while sessions run → `live_sessions` rows kept fresh (`last_seen` ≈ now, `ended_at` NULL).
 2. User restarts the Mac. Shells die; the last tick before shutdown is the last `last_seen`.
-3. On boot, launchd `RunAtLoad` fires a tick. The previously-running rows aren't in the (now empty/new) registry and their `last_seen < kern.boottime` → marked `ended_at=now, ended_reason='restart'`.
+3. On boot, launchd `RunAtLoad` fires a tick. The pre-reboot `<pid>.json` files **persist** (the sessions dir is in `$HOME`, which survives reboots), but `readLiveRegistry` drops them because their `startedAt < kern.boottime` — a genuinely-live session always started *after* the machine booted, so anything older is a leftover whose pid is dead or has been reused by an unrelated process. With those leftovers filtered out, the previously-running `live_sessions` rows are absent from the (post-reboot) registry and their `last_seen < kern.boottime` → marked `ended_at=now, ended_reason='restart'`. **(Validated by PoC, 2026-06-01: empirically, Claude Code deletes `<pid>.json` on clean exit, so within a single uptime the registry only holds live instances; the `startedAt >= bootTime` guard exists for the reboot/crash case where files linger.)**
 4. User opens ccaudit → **Recently ended** shows "7 sessions ended at your last restart," each with its dir, last status, and a resume command. Newly-started sessions appear under **Running now**.
 
 ## Edge cases
 
-- **Stale `<pid>.json`** (process died, file lingers): the liveness check drops it from `readLiveRegistry`, so the tick marks it ended.
-- **PID reuse**: keyed on `session_id`; a row whose `started_at` changes is overwritten as a new session.
+- **Stale `<pid>.json`** (process died, file lingers): the liveness check drops it from `readLiveRegistry`, so the tick marks it ended. (Observed: Claude deletes the file on *clean* exit; lingering happens on crash/`SIGKILL` or across a reboot.)
+- **PID reuse across a reboot** (the common case the feature targets): a leftover file's pid may resolve to an unrelated live process post-reboot. `readLiveRegistry` filters any entry whose `startedAt < bootTime`, so reused-pid leftovers never count as running. (PID reuse *within* a single uptime — a crashed Claude whose pid is grabbed by another process before its file is cleaned — is a rare residual edge; a future `ps`-start-time cross-check could close it.)
+- **PID reuse (DB row)**: keyed on `session_id`; a row whose `started_at` changes is overwritten as a new session.
 - **Multiple sessions per cwd**: independent rows, keyed by `session_id`.
 - **Watcher not installed**: live view is on-demand-only (no restart history); UI shows an install hint.
 - **Malformed/partial registry file**: skipped (best-effort parse), logged to `~/.ccaudit/logs/watch.log`.
