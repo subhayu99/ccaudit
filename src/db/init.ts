@@ -140,6 +140,24 @@ CREATE TABLE IF NOT EXISTS topic_members (
   PRIMARY KEY (topic_id, session_id)
 );
 CREATE INDEX IF NOT EXISTS idx_topic_members_session ON topic_members(session_id);
+
+-- Snapshot of Claude Code's live running sessions (from ~/.claude/sessions/<pid>.json),
+-- persisted so a machine restart doesn't lose track of what was open. Keyed by
+-- session_id; one row per session, ended_at NULL while running.
+CREATE TABLE IF NOT EXISTS live_sessions (
+  session_id   TEXT PRIMARY KEY,
+  pid          INTEGER,
+  cwd          TEXT,
+  name         TEXT,
+  status       TEXT,
+  version      TEXT,
+  started_at   INTEGER,
+  first_seen   INTEGER NOT NULL,
+  last_seen    INTEGER NOT NULL,
+  ended_at     INTEGER,
+  ended_reason TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_live_last_seen ON live_sessions(last_seen DESC);
 `;
 
 /** Register user-defined SQL functions once per connection (must be present on every handle). */
