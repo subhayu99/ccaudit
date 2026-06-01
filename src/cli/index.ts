@@ -10,12 +10,14 @@ import { topicsCommand } from "./topics.js";
 import { nameCommand } from "./name.js";
 import { watchCommand, watchTickCommand } from "./watch.js";
 import { liveCommand } from "./live.js";
+import { nativeBindingHelp } from "./native-error.js";
+import { version as pkgVersion } from "../../package.json";
 
 const program = new Command();
 program
   .name("ccaudit")
   .description("Browse, search, and audit your Claude Code session history")
-  .version("0.1.0");
+  .version(pkgVersion);
 
 program
   .command("serve", { isDefault: true })
@@ -91,4 +93,9 @@ program
   .description("Show running (and recently-ended) Claude Code sessions")
   .action(liveCommand);
 
-program.parseAsync();
+program.parseAsync().catch((err) => {
+  const help = nativeBindingHelp(err);
+  if (help) console.error(help);
+  else console.error(err);
+  process.exit(1);
+});

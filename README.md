@@ -31,12 +31,16 @@ Everything runs **locally**. Nothing leaves your machine.
 npx @subhayu99/ccaudit   # index + open the browser UI (http://127.0.0.1:4321)
 ```
 
-Or install globally:
+Or install globally so the `ccaudit` command is on your `PATH`:
 
 ```bash
-npm install -g @subhayu99/ccaudit
+npm install -g @subhayu99/ccaudit   # note the -g
 ccaudit                  # serve (default)
 ```
+
+> **`ccaudit: command not found`?** A *local* `npm install @subhayu99/ccaudit` (without `-g`) only puts the binary in `./node_modules/.bin`, never on your `PATH` — so the bare `ccaudit` command won't resolve in any terminal, old or new. Use `npx @subhayu99/ccaudit` (zero-install), install globally with `-g` as above, or run the local copy with `npx ccaudit` from that project directory.
+
+> **Node version:** use an even-numbered LTS — **Node 22 LTS or Node 24** are safest. ccaudit's storage engine (better-sqlite3) ships prebuilt binaries for those; on a bleeding-edge or odd-numbered Node it may try to compile from source and need build tools (`xcode-select --install` on macOS).
 
 First run indexes `~/.claude/projects/`; subsequent runs only re-read changed files (an append-only fast path keeps reindex in the tens of milliseconds).
 
@@ -68,6 +72,9 @@ ccaudit topics                # list AI-clustered topics with session counts
 ccaudit name [--force]        # generate titles for untitled sessions via `claude -p` (haiku)
 ccaudit doctor                # diagnose the index db + access to ~/.claude/projects/
 ccaudit mcp                   # MCP stdio server exposing session-history query tools
+ccaudit live                  # show running (and recently-ended) Claude Code sessions
+ccaudit watch --install       # (macOS) background watcher so running sessions survive restarts
+                              #   --uninstall  --status
 ```
 
 ## MCP server

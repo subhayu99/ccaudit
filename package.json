@@ -1,6 +1,6 @@
 {
   "name": "@subhayu99/ccaudit",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Browse, search, and audit your Claude Code session history",
   "type": "module",
   "author": "subhayu99",
@@ -56,7 +56,7 @@
     "@astrojs/node": "^9.5.5",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "astro": "^5.18.1",
-    "better-sqlite3": "^11.5.0",
+    "better-sqlite3": "^12.10.0",
     "commander": "^12.1.0",
     "d3-drag": "^3.0.0",
     "d3-force": "^3.0.0",
