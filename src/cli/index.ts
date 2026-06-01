@@ -22,6 +22,8 @@ program
   .description("Start the browser UI (default when no subcommand given)")
   .option("--port <n>", "server port", "4321")
   .option("--no-open", "don't auto-open browser")
+  .option("--watch", "install the background session watcher without prompting")
+  .option("--no-watch", "skip the watcher prompt and don't ask again (use `ccaudit watch --uninstall` to remove an installed one)")
   .action(serveCommand);
 
 program

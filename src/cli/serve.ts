@@ -7,7 +7,10 @@ import { openDb } from "../db/init.js";
 import { indexAll } from "../indexer/index-runner.js";
 import { createIndexReporter } from "./index-reporter.js";
 import { isPortFree, findFreePort, whoHasPort, formatPortInUse } from "./port.js";
-import { INDEX_DB_PATH, CLAUDE_PROJECTS_DIR } from "../paths.js";
+import { INDEX_DB_PATH, CLAUDE_PROJECTS_DIR, LOGS_DIR } from "../paths.js";
+import { createInterface } from "node:readline";
+import { readConfig, writeConfig } from "../lib/config.js";
+import { installAgent, agentInstalled } from "../lib/launchd.js";
 import { setTimeout as wait } from "node:timers/promises";
 
 /** Package root = parent of the CLI bundle (dist/index.js → <pkg>). */
@@ -15,7 +18,53 @@ function packageRoot(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), "..");
 }
 
-export async function serveCommand(opts: { port?: string; open?: boolean }): Promise<void> {
+function askYesNo(question: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(question, (answer) => {
+      rl.close();
+      const a = answer.trim().toLowerCase();
+      resolve(a === "" || a === "y" || a === "yes"); // default Yes
+    });
+  });
+}
+
+/**
+ * Decide whether to install the running-session watcher, asking at most once.
+ * --watch installs; --no-watch records a decline; otherwise prompt only on an
+ * interactive TTY (headless never prompts). macOS only — a no-op elsewhere.
+ */
+async function maybeOfferWatch(watch: boolean | undefined): Promise<void> {
+  if (process.platform !== "darwin") return;
+  const install = () => {
+    // argv[1] is the CLI bundle launchd must run. If it's somehow empty (odd
+    // embeddings), a plist with an empty program path would "install" but never
+    // actually tick — fail loudly instead of silently.
+    const cliPath = process.argv[1];
+    if (!cliPath) { console.log(kleur.dim("(can't install the watcher: unknown CLI path)")); return; }
+    try {
+      installAgent({ nodePath: process.execPath, cliPath, logPath: join(LOGS_DIR, "watch.log") });
+      writeConfig({ watch: "installed" });
+      console.log(kleur.dim("✓ Background watcher installed — your running sessions now survive restarts. (ccaudit watch --uninstall to remove)"));
+    } catch (e) {
+      console.log(kleur.dim(`(couldn't install the watcher: ${(e as Error).message})`));
+    }
+  };
+
+  if (watch === true) { if (!agentInstalled()) install(); return; }
+  if (watch === false) { writeConfig({ watch: "declined" }); return; }
+
+  const cfg = readConfig();
+  if (agentInstalled() || cfg.watch === "installed" || cfg.watch === "declined") return; // asked already
+
+  if (!process.stdin.isTTY) return; // headless: never prompt
+
+  const yes = await askYesNo(kleur.bold("Track your running Claude Code sessions across restarts? ") + kleur.dim("[Y/n] "));
+  if (yes) install();
+  else { writeConfig({ watch: "declined" }); console.log(kleur.dim("Skipped. Re-run `ccaudit watch --install` any time.")); }
+}
+
+export async function serveCommand(opts: { port?: string; open?: boolean; watch?: boolean }): Promise<void> {
   const port = opts.port ?? "4321";
   const root = packageRoot();
   const entry = join(root, "dist-web", "server", "entry.mjs");
@@ -32,6 +81,8 @@ export async function serveCommand(opts: { port?: string; open?: boolean }): Pro
     for (const line of rest) console.error(kleur.dim(line));
     process.exit(1);
   }
+
+  await maybeOfferWatch(opts.watch);
 
   console.log(kleur.bold("ccaudit") + kleur.dim(" · indexing your Claude Code history"));
   console.log(kleur.dim(`${CLAUDE_PROJECTS_DIR} · 100% local, nothing is uploaded · first run only — re-runs are instant`));
