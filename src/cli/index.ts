@@ -8,6 +8,8 @@ import { mcpCommand } from "./mcp.js";
 import { statsCommand } from "./stats.js";
 import { topicsCommand } from "./topics.js";
 import { nameCommand } from "./name.js";
+import { watchCommand, watchTickCommand } from "./watch.js";
+import { liveCommand } from "./live.js";
 
 const program = new Command();
 program
@@ -68,5 +70,23 @@ program
   .command("mcp")
   .description("Start an MCP stdio server exposing session-history query tools")
   .action(mcpCommand);
+
+program
+  .command("watch")
+  .description("Install/manage the background watcher that tracks running Claude Code sessions")
+  .option("--install", "install the launchd watcher (macOS)")
+  .option("--uninstall", "remove the watcher")
+  .option("--status", "show watcher status (default)")
+  .action(watchCommand);
+
+program
+  .command("watch-tick", { hidden: true })
+  .description("internal: one reconcile pass (invoked by launchd)")
+  .action(watchTickCommand);
+
+program
+  .command("live")
+  .description("Show running (and recently-ended) Claude Code sessions")
+  .action(liveCommand);
 
 program.parseAsync();
