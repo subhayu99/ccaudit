@@ -3,6 +3,7 @@
 import type { LibraryTree } from "../db/library";
 import type { TopicSummary } from "../db/topics";
 import { rangeLabel } from "../db/date-range";
+import { isJobRunning } from "../lib/jobs";
 interface Props { tree: LibraryTree; topics?: TopicSummary[]; activeRepo?: string; activeWorkdir?: string; activeTopic?: number; mode?: string; }
 const { tree, topics = [], activeRepo, activeWorkdir, activeTopic, mode } = Astro.props;
 // Global date-range filter (persisted in the ccaudit-range cookie). Scopes list/search/ask.
@@ -18,13 +19,20 @@ const isoDay = (ms: string) => {
 const [, cf = "", ct = ""] = isCustom ? rangeToken.split(":") : [];
 const customFrom = isCustom ? isoDay(cf) : "";
 const customTo = isCustom ? isoDay(ct) : "";
+// Long-running AI jobs (process-wide). Render the buttons mid-run on EVERY page so navigating away
+// and back still shows progress and the action can't be re-fired.
+const clusterRunning = isJobRunning("cluster");
+const nameRunning = isJobRunning("name");
 ---
 <div id="topbar-progress" aria-hidden="true"></div>
 <div class="flex flex-col h-full" style="color:var(--text-dim);">
-  <div class="flex items-center gap-2 px-4 pt-4 pb-3">
-    <img src="/logo.png" alt="ccaudit" width="24" height="24" class="rounded-md shrink-0" style="background:#1E1915; object-fit:contain;" />
+  <div class="brand-row flex items-center gap-2 px-4 pt-4 pb-3">
+    <button id="logo-expand" class="brand-logo shrink-0" title="Expand sidebar" aria-label="Expand sidebar">
+      <img src="/logo.png" alt="ccaudit" width="24" height="24" class="rounded-md" style="background:#1E1915; object-fit:contain;" />
+      <span class="expand-ico" aria-hidden="true">→|</span>
+    </button>
     <h1 class="font-serif text-[18px] font-semibold brand-name rail-hide" style="color:var(--text);">ccaudit</h1>
-    <button id="rail-toggle" class="rail-toggle ml-auto" title="Collapse / expand sidebar" aria-label="Toggle sidebar width"></button>
+    <button id="rail-toggle" class="rail-toggle ml-auto" title="Collapse sidebar" aria-label="Collapse sidebar"></button>
   </div>
   <a href="/search" data-open-cmdk class="mx-3 mb-3 flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px]"
      style="background:var(--canvas); border:1px solid var(--border); color:var(--text-faint); text-decoration:none; cursor:pointer;">
@@ -53,6 +61,15 @@ const customTo = isCustom ? isoDay(ct) : "";
     <a href="/ask" class="lib-item" title="Ask history"><span class="ico">✦</span><span class="lbl-t">Ask history</span></a>
     <a href="/live" class="lib-item" title="Running sessions"><span class="ico">◉</span><span class="lbl-t">Live</span> <span id="live-nav-count" class="ml-auto text-[11px] rail-hide" style="color:var(--c-green); display:none;"></span></a>
 
+    <div class="px-2.5 pt-3 pb-1 rail-hide" id="title-tools">
+      <span class="text-[10.5px] tracking-wider uppercase font-semibold" style="color:var(--text-faint);">Session titles</span>
+      <div class="flex items-center gap-2 mt-1.5">
+        <button id="smart-name" class="title-act" disabled={nameRunning} data-busy={nameRunning ? "1" : undefined} title="Generate AI titles for sessions that don't have a good one yet"><span class="ai-spin" aria-hidden="true"></span><span class="ai-lbl">{nameRunning ? "✨ Naming…" : "✨ Smart-name"}</span></button>
+        <button id="force-name" class="title-act" disabled={nameRunning} data-busy={nameRunning ? "1" : undefined} title="Regenerate AI titles for ALL sessions (overwrites existing — costs more)"><span class="ai-spin" aria-hidden="true"></span><span class="ai-lbl">{nameRunning ? "Naming…" : "Re-name all"}</span></button>
+      </div>
+      <div id="name-note" class="text-[11px] mt-1" style="display:none;color:var(--text-faint);"></div>
+    </div>
+
     <div id="running-now" class="rail-hide" style="display:none;">
       <div class="text-[10.5px] tracking-wider uppercase px-2.5 pt-3.5 pb-1.5 font-semibold" style="color:var(--text-faint);">
         Running now <span id="running-now-count"></span>
@@ -63,7 +80,7 @@ const customTo = isCustom ? isoDay(ct) : "";
     <div class="rail-hide">
     <div class="flex items-center px-2.5 pt-3.5 pb-1.5">
       <span class="text-[10.5px] tracking-wider uppercase font-semibold" style="color:var(--text-faint);">Topics</span>
-      <button id="cluster-topics" class="ml-auto" style="background:none;border:none;color:var(--amber-bright);cursor:pointer;font-size:10.5px;" title="Cluster new (unclustered) sessions into topics with AI"><span class="cluster-spinner" aria-hidden="true"></span><span class="cluster-label">✨ {topics.length ? "Cluster new" : "Cluster"}</span></button>
+      <button id="cluster-topics" class="ml-auto" disabled={clusterRunning} data-busy={clusterRunning ? "1" : undefined} style="background:none;border:none;color:var(--amber-bright);cursor:pointer;font-size:10.5px;" title="Cluster new (unclustered) sessions into topics with AI"><span class="cluster-spinner" aria-hidden="true"></span><span class="cluster-label">✨ {clusterRunning ? "Clustering…" : (topics.length ? "Cluster new" : "Cluster")}</span></button>
     </div>
     <div id="cluster-note" class="px-2.5 pb-1 text-[11px]" style="display:none;color:var(--text-faint);">~3 min &amp; ~$0.08 — keep this tab open.</div>
     {topics.length === 0 && (
@@ -156,17 +173,40 @@ const customTo = isCustom ? isoDay(ct) : "";
   /* Icon rail (html.nav-rail): hide labels/sections, center the glyphs. */
   .rail-toggle { background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:14px; line-height:1; padding:2px 5px; border-radius:6px; }
   .rail-toggle::before { content:"«"; }
-  :global(html.nav-rail) .rail-toggle::before { content:"»"; }
   .rail-toggle:hover { color:var(--text); background:var(--panel-2); }
+  /* Gemini-style collapse: in the rail there is ONE control — the logo. Hovering it reveals an
+     expand button (the logo swaps to a →| glyph); the persistent collapse button is hidden so the
+     two toggles never stack/overlap. */
+  .brand-logo { position:relative; display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; background:none; border:none; padding:0; cursor:default; }
+  .brand-logo .expand-ico { position:absolute; inset:-3px; display:none; align-items:center; justify-content:center; border-radius:7px; background:var(--panel); border:1px solid var(--border); color:var(--text-dim); font-size:12px; }
+  :global(html.nav-rail) #rail-toggle { display:none; }
+  :global(html.nav-rail) .brand-row { justify-content:center; }
+  :global(html.nav-rail) .brand-logo { cursor:pointer; }
+  :global(html.nav-rail) .brand-logo:hover img { opacity:0; }
+  :global(html.nav-rail) .brand-logo:hover .expand-ico { display:flex; }
   .lib-item .ico { width:18px; text-align:center; flex:none; }
   :global(html.nav-rail) .rail-hide, :global(html.nav-rail) .lbl-t { display:none !important; }
   :global(html.nav-rail) .lib-item { justify-content:center; gap:0; padding:9px 0; }
   :global(html.nav-rail) .lib-item .ico { width:auto; font-size:16px; }
   :global(html.nav-rail) [data-open-cmdk] { justify-content:center; }
   :global(html.nav-rail) .rail-toggle { margin:0 auto; }
+  /* Long-running AI actions (cluster / name): a visible spinner that appears while busy, so the
+     button never looks dead and users don't re-tap it. */
+  .cluster-spinner, .ai-spin { display:none; width:9px; height:9px; margin-right:5px; vertical-align:-1px;
+    border:1.5px solid var(--border); border-top-color:var(--amber-bright); border-radius:50%; animation:ccspin .7s linear infinite; }
+  button[data-busy="1"] .cluster-spinner, button[data-busy="1"] .ai-spin { display:inline-block; }
+  @keyframes ccspin { to { transform:rotate(360deg); } }
+  .title-act { display:inline-flex; align-items:center; background:var(--canvas); border:1px solid var(--border); color:var(--text-dim); font-size:11px; padding:3px 8px; border-radius:6px; cursor:pointer; }
+  .title-act:hover { color:var(--text); border-color:var(--amber); }
+  .title-act[data-busy="1"] { opacity:.75; cursor:default; }
   .lib-item { display:flex; align-items:center; gap:9px; padding:6px 10px; border-radius:7px; cursor:pointer; white-space:nowrap; font-size:14px; color:var(--text-dim); text-decoration:none; }
   .lib-item:hover { background:var(--panel-2); color:var(--text); }
   .lib-item[data-active="true"] { background:var(--raise); color:var(--text); }
+  /* The Running-now items are injected via innerHTML (no Astro scope attribute), so the scoped
+     .lib-item rule above never reaches them — style them with a global rule, scoped under the list. */
+  #running-now-list :global(.lib-item) { display:flex; align-items:center; gap:9px; padding:6px 10px; border-radius:7px; white-space:nowrap; font-size:13.5px; color:var(--text-dim); text-decoration:none; }
+  #running-now-list :global(.lib-item:hover) { background:var(--panel-2); color:var(--text); }
+  #running-now-list :global(.truncate) { overflow:hidden; text-overflow:ellipsis; min-width:0; }
   .lib-item.child { padding-left:30px; font-size:13px; }
   .caret { background:none; border:none; color:var(--text-faint); width:10px; cursor:pointer; transition:transform .15s; padding:0; }
   .repo-group[data-open="true"] .caret { transform:rotate(90deg); }
@@ -210,20 +250,47 @@ const customTo = isCustom ? isoDay(ct) : "";
     });
   });
 
-  // Cluster all sessions into topics with AI (~3 min, ~$0.08).
-  const clusterBtn = document.getElementById("cluster-topics");
-  if (clusterBtn) {
-    clusterBtn.addEventListener("click", async (e) => {
-      e.preventDefault(); e.stopPropagation();
-      const el = e.currentTarget as HTMLButtonElement;
-      const original = el.textContent;
-      el.disabled = true; el.textContent = "✨ Clustering…";
-      try {
-        const res = await fetch("/api/cluster", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-        if (res.ok) window.location.href = "/"; else { el.disabled = false; el.textContent = original; }
-      } catch { el.disabled = false; el.textContent = original; }
-    });
+  // Long-running AI actions (cluster / smart-name / re-name-all): one helper that disables the
+  // button, shows a spinner + progress bar + note, ignores repeat taps, and reloads on success.
+  function runAiAction(btn: HTMLButtonElement | null, o: { url: string; body: object; workingLabel: string; note: string; confirm?: string; idleNote?: string; noteEl: HTMLElement | null }) {
+    if (!btn || btn.dataset.busy === "1") return;
+    if (o.confirm && !window.confirm(o.confirm)) return;
+    btn.dataset.busy = "1"; btn.disabled = true;
+    const lbl = btn.querySelector(".ai-lbl") || btn.querySelector(".cluster-label");
+    const orig = lbl ? lbl.textContent : null;
+    if (lbl && o.workingLabel) lbl.textContent = o.workingLabel;
+    startProgress();
+    if (o.noteEl) { o.noteEl.textContent = o.note; o.noteEl.style.color = "var(--text-faint)"; o.noteEl.style.display = ""; }
+    fetch(o.url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(o.body) })
+      .then(async (res) => {
+        const j = await res.json().catch(() => ({})) as { error?: string; named?: number; newlyClustered?: number };
+        if (res.ok) {
+          const changed = (j.named ?? 0) > 0 || (j.newlyClustered ?? 0) > 0;
+          if (changed) { window.location.href = "/"; return; } // refresh to show new titles/topics
+          // Nothing to do (e.g. every session already has a title) — restore + inform, don't reload.
+          btn.dataset.busy = ""; btn.disabled = false;
+          if (lbl && orig != null) lbl.textContent = orig;
+          stopProgress();
+          if (o.noteEl) { o.noteEl.textContent = o.idleNote || "Nothing to do."; o.noteEl.style.color = "var(--text-faint)"; o.noteEl.style.display = ""; }
+          return;
+        }
+        throw new Error(j.error || ("HTTP " + res.status));
+      })
+      .catch((err) => {
+        btn.dataset.busy = ""; btn.disabled = false;
+        if (lbl && orig != null) lbl.textContent = orig;
+        stopProgress();
+        if (o.noteEl) { o.noteEl.textContent = "Failed: " + err.message; o.noteEl.style.color = "#d77"; o.noteEl.style.display = ""; }
+      });
   }
+  (document.getElementById("cluster-topics") as HTMLButtonElement | null)?.addEventListener("click", (e) => {
+    e.preventDefault(); e.stopPropagation();
+    runAiAction(e.currentTarget as HTMLButtonElement, { url: "/api/cluster", body: {}, workingLabel: "✨ Clustering…", note: "Clustering sessions into topics… ~1–3 min & a few cents — keep this tab open.", idleNote: "No new sessions to cluster.", noteEl: document.getElementById("cluster-note") });
+  });
+  (document.getElementById("smart-name") as HTMLButtonElement | null)?.addEventListener("click", (e) =>
+    runAiAction(e.currentTarget as HTMLButtonElement, { url: "/api/name", body: { action: "smart" }, workingLabel: "✨ Naming…", note: "Generating titles for untitled sessions… keep this tab open.", idleNote: "All sessions already have titles — use “Re-name all” to regenerate.", noteEl: document.getElementById("name-note") }));
+  (document.getElementById("force-name") as HTMLButtonElement | null)?.addEventListener("click", (e) =>
+    runAiAction(e.currentTarget as HTMLButtonElement, { url: "/api/name", body: { action: "force" }, workingLabel: "Naming all…", confirm: "Regenerate AI titles for ALL sessions? This overwrites existing titles and costs a few cents.", note: "Re-titling every session… can take a few minutes — keep this tab open.", noteEl: document.getElementById("name-note") }));
 
   // Shared thin top progress bar — immediate feedback before a navigating action.
   const progressEl = document.getElementById("topbar-progress");
@@ -294,9 +361,10 @@ const customTo = isCustom ? isoDay(ct) : "";
   // Light poll of /api/live to keep the sidebar "Running now" list current while a page is open.
   function shortId(s: string) { return s.slice(0, 8); }
   async function refreshRunning() {
-    let data: { running: Array<{ sessionId: string; name: string | null; cwd: string | null; isIndexed: boolean }> };
+    let data: { running: Array<{ sessionId: string; name: string | null; cwd: string | null; isIndexed: boolean }>; jobs?: string[] };
     try { const res = await fetch("/api/live"); if (!res.ok) return; data = await res.json(); }
     catch { return; }
+    syncJobs(data.jobs ?? []);
     const running = data.running ?? [];
     const section = document.getElementById("running-now");
     const list = document.getElementById("running-now-list");
@@ -312,6 +380,23 @@ const customTo = isCustom ? isoDay(ct) : "";
       const href = r.isIndexed ? `/s/${r.sessionId}` : "/live";
       return `<a href="${href}" class="lib-item" title="${label}"><span class="w-2 h-2 rounded-full inline-block" style="background:var(--c-green);"></span><span class="truncate">${label}</span></a>`;
     }).join("");
+  }
+  // Reflect process-wide AI jobs live: mark buttons busy when a run starts (e.g. from another tab),
+  // and reload when one finishes so this page shows the fresh titles/topics + re-enabled buttons.
+  function syncJobs(jobs: string[]) {
+    ([["cluster", "cluster-topics", "✨ Clustering…"], ["name", "smart-name", "✨ Naming…"], ["name", "force-name", "Naming…"]] as const).forEach(([kind, id, working]) => {
+      const btn = document.getElementById(id) as HTMLButtonElement | null;
+      if (!btn) return;
+      const running = jobs.indexOf(kind) !== -1;
+      const was = btn.dataset.busy === "1";
+      if (running && !was) {
+        btn.dataset.busy = "1"; btn.disabled = true;
+        const lbl = btn.querySelector(".ai-lbl") || btn.querySelector(".cluster-label");
+        if (lbl) lbl.textContent = working;
+      } else if (!running && was) {
+        window.location.reload(); // finished elsewhere → refresh to show results
+      }
+    });
   }
   refreshRunning();
   setInterval(refreshRunning, 15000);

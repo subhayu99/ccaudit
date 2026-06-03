@@ -26,21 +26,24 @@ const spendMax = Math.max(1, ...spend.byModel.map((m) => m.costUsd));
 const activity = getActivityByDay(db, range);
 const tools = getToolUsage(db, range).slice(0, 12);
 
-// Build a GitHub-style heatmap grid for the last 18 weeks (msg counts per day).
-const msgsByDay = new Map(activity.map((a) => [a.day, a.messages]));
-const DAYS = 18 * 7;
+// Build a GitHub-style heatmap grid (msg counts per day). A full year of weeks so the grid spans
+// the panel width like the bar charts below it; the cells flex to fill (see .heatmap CSS).
+const byDay = new Map(activity.map((a) => [a.day, a]));
+const WEEKS = 52;
+const DAYS = WEEKS * 7;
 const today = new Date();
 today.setHours(0, 0, 0, 0);
-const cells: { day: string; level: number }[] = [];
+const cells: { day: string; level: number; messages: number; sessions: number }[] = [];
 const max = Math.max(1, ...activity.map((a) => a.messages));
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 for (let i = DAYS - 1; i >= 0; i--) {
   const d = new Date(today);
   d.setDate(today.getDate() - i);
   const key = iso(d);
-  const m = msgsByDay.get(key) ?? 0;
+  const a = byDay.get(key);
+  const m = a?.messages ?? 0;
   const level = m === 0 ? 0 : m < max * 0.1 ? 1 : m < max * 0.3 ? 2 : m < max * 0.6 ? 3 : 4;
-  cells.push({ day: key, level });
+  cells.push({ day: key, level, messages: m, sessions: a?.sessions ?? 0 });
 }
 const HEAT = ["var(--raise)", "rgba(127,174,122,.35)", "rgba(127,174,122,.6)", "rgba(127,174,122,.85)", "#7fae7a"];
 const toolMax = Math.max(1, ...tools.map((t) => t.count));
@@ -99,9 +102,9 @@ const totalTools = tools.reduce((s, t) => s + t.count, 0);
 
   <h3 class="font-serif text-[16px] mb-3" style="color:var(--text);">Activity</h3>
   <div class="rounded-xl p-4 mb-8" style="background:var(--panel); border:1px solid var(--border-soft);">
-    <div class="heatmap">
+    <div class="heatmap" style={`aspect-ratio:${WEEKS} / 7;`}>
       {cells.map((c) => (
-        <span class="cell" title={`${c.day}`} style={`background:${HEAT[c.level]};`}></span>
+        <span class="cell" title={c.messages ? `${c.day}  ·  ${c.messages.toLocaleString()} messages  ·  ${c.sessions} session${c.sessions === 1 ? "" : "s"}` : `${c.day}  ·  no activity`} style={`background:${HEAT[c.level]};`}></span>
       ))}
     </div>
     <div class="flex items-center gap-1.5 mt-3 text-[11px]" style="color:var(--text-faint);">
@@ -125,7 +128,10 @@ const totalTools = tools.reduce((s, t) => s + t.count, 0);
 )}
 
 <style>
-  .heatmap { display:grid; grid-auto-flow:column; grid-template-rows:repeat(7,11px); grid-auto-columns:11px; gap:3px; }
+  /* Full-width heatmap: 7 rows, columns flex to fill the panel; aspect-ratio (set inline from the
+     week count) keeps every cell square at any container width — matches the bar charts' width. */
+  .heatmap { display:grid; grid-auto-flow:column; grid-template-rows:repeat(7,1fr); grid-auto-columns:1fr; gap:3px; width:100%; }
+  .heatmap .cell { width:100%; height:100%; }
   .cell { width:11px; height:11px; border-radius:3px; display:inline-block; }
   .track { flex:1; height:14px; background:var(--raise); border-radius:4px; overflow:hidden; }
   .bar { display:block; height:14px; border-radius:4px; background:linear-gradient(90deg,var(--amber),var(--c-orange)); }

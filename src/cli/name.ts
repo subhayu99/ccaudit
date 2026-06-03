@@ -2,24 +2,9 @@ import kleur from "kleur";
 import { openDb } from "../db/init.js";
 import { INDEX_DB_PATH } from "../paths.js";
 import { listSessionsNeedingTitle, updateAiTitle } from "../db/sessions.js";
-import { getSessionMessagesHead } from "../db/messages.js";
-import { segmentSession } from "../lib/segment.js";
-import { cleanPromptText } from "../lib/clean-prompt.js";
 import { nameSessions, type NameItem } from "../labeling/name-sessions.js";
+import { buildNameContext } from "../labeling/name-context.js";
 import { clampLimit } from "./limit.js";
-
-/** Opening context for titling: the first few cleaned user-turn segment openers. */
-function buildContext(db: ReturnType<typeof openDb>, id: string, firstPrompt: string | null): string {
-  try {
-    const head = getSessionMessagesHead(db, id, 300);
-    const openers = segmentSession(head).map((s) => s.opener).filter(Boolean).slice(0, 4);
-    const ctx = openers.join("\n").trim();
-    if (ctx) return ctx.slice(0, 1400);
-  } catch {
-    /* fall through to first_prompt */
-  }
-  return firstPrompt ? cleanPromptText(firstPrompt).slice(0, 700) : "";
-}
 
 export async function nameCommand(opts: {
   force?: boolean;
@@ -39,7 +24,7 @@ export async function nameCommand(opts: {
       kleur.dim(`Naming ${targets.length} session(s) via claude -p (haiku), ${batchSize}/batch — this costs a few cents and runs for a minute or two.`)
     );
 
-    const items: NameItem[] = targets.map((t) => ({ sessionId: t.id, context: buildContext(db, t.id, t.firstPrompt) }));
+    const items: NameItem[] = targets.map((t) => ({ sessionId: t.id, context: buildNameContext(db, t.id, t.firstPrompt) }));
     let named = 0;
     let totalCost = 0;
     for (let i = 0; i < items.length; i += batchSize) {

@@ -12,11 +12,16 @@ import { getBootTime } from "../lib/boot-time";
 import { agentInstalled } from "../lib/launchd";
 import { buildResumeCommand } from "../lib/resume";
 import { relativeTime } from "../lib/render";
+import { cleanSessionName } from "../lib/clean-prompt";
+import { listExclusions, isExcludedPath } from "../db/exclusions";
 
 const now = Date.now();
 const DAY = 86_400_000;
 const range = resolveRange(Astro.cookies.get("ccaudit-range")?.value, now);
 const db = getDb();
+// Hidden directories (Directories page / sidebar): drop their sessions from live + recently-ended.
+const exPrefixes = listExclusions(db);
+const hidden = (cwd: string | null) => !!cwd && isExcludedPath(cwd, exPrefixes);
 const tree = getLibraryTree(db, range);
 const topics = listTopics(db, range);
 
@@ -30,16 +35,16 @@ const running = reg.map((inst) => {
   const d = dbById.get(inst.sessionId);
   const cwd = inst.cwd ?? d?.cwd ?? null;
   return {
-    sessionId: inst.sessionId, name: inst.name ?? d?.name ?? null, cwd,
+    sessionId: inst.sessionId, name: cleanSessionName(inst.name ?? d?.name) || null, cwd,
     status: inst.status, startedAt: inst.startedAt ?? d?.startedAt ?? null,
     isIndexed: indexed.has(inst.sessionId),
     resumeCmd: buildResumeCommand(inst.sessionId, cwd && existsSync(cwd) ? cwd : null),
   };
-});
+}).filter((r) => !hidden(r.cwd));
 const recentlyEnded = history
-  .filter((r) => r.endedAt !== null && !regIds.has(r.sessionId))
+  .filter((r) => r.endedAt !== null && !regIds.has(r.sessionId) && !hidden(r.cwd))
   .map((r) => ({
-    ...r, isIndexed: indexed.has(r.sessionId),
+    ...r, name: cleanSessionName(r.name) || null, isIndexed: indexed.has(r.sessionId),
     resumeCmd: buildResumeCommand(r.sessionId, r.cwd && existsSync(r.cwd) ? r.cwd : null),
   }));
 
@@ -73,7 +78,7 @@ const short = (s: string) => s.slice(0, 8);
             </div>
             <div class="text-[12px] mt-0.5 font-mono-w truncate" style="color:var(--text-dim);">{r.cwd ?? "cwd unknown"}</div>
             <div class="flex items-center gap-3 mt-1.5">
-              <button class="resume-btn" data-cmd={r.resumeCmd}>Copy resume</button>
+              <button class="resume-btn" data-cmd={r.resumeCmd}>Resume this session</button>
               {r.isIndexed && <a href={`/s/${r.sessionId}`} class="text-[12px]" style="color:var(--amber-bright);">Open transcript →</a>}
             </div>
           </div>
@@ -98,7 +103,7 @@ const short = (s: string) => s.slice(0, 8);
             </div>
             <div class="text-[12px] mt-0.5 font-mono-w truncate" style="color:var(--text-dim);">{r.cwd ?? "cwd unknown"}</div>
             <div class="flex items-center gap-3 mt-1.5">
-              <button class="resume-btn" data-cmd={r.resumeCmd}>Copy resume</button>
+              <button class="resume-btn" data-cmd={r.resumeCmd}>Resume this session</button>
               {r.isIndexed && <a href={`/s/${r.sessionId}`} class="text-[12px]" style="color:var(--amber-bright);">Open transcript →</a>}
             </div>
           </div>

@@ -63,7 +63,7 @@ const mobileFocus = hasList ? mobileMain : "reader";
       html.list-collapsed { --cl:0px; }
       html.list-collapsed .shell-list { border-right:none; }
       /* Handle straddling the list↔reader divider; collapses/expands the list. */
-      .list-toggle { position:fixed; top:9px; left:calc(var(--cs,264px) + var(--cl,372px)); transform:translateX(-50%); z-index:25;
+      .list-toggle { position:fixed; top:16px; left:calc(var(--cs,264px) + var(--cl,372px)); transform:translateX(-50%); z-index:25;
         width:24px; height:24px; border-radius:7px; background:var(--panel); border:1px solid var(--border);
         color:var(--text-dim); cursor:pointer; font-size:12px; line-height:1; transition:left .16s ease, color .12s; }
       .list-toggle:hover { color:var(--text); background:var(--panel-2); }
@@ -103,11 +103,17 @@ const mobileFocus = hasList ? mobileMain : "reader";
           var on = document.documentElement.classList.toggle("list-collapsed");
           try { localStorage.setItem("ccaudit-list-collapsed", on ? "1" : "0"); } catch (e) {}
         });
-        // Sidebar icon-rail toggle (button lives in the sidebar header).
+        // Sidebar icon-rail toggle. Two entry points, one state (no stacked buttons):
+        //  • #rail-toggle (header) collapses when expanded.
+        //  • #logo-expand (the logo) expands when collapsed — Gemini-style hover-to-expand.
         document.addEventListener("click", function (e) {
-          var t = e.target.closest && e.target.closest("#rail-toggle");
-          if (!t) return;
-          var on = document.documentElement.classList.toggle("nav-rail");
+          var html = document.documentElement;
+          var rt = e.target.closest && e.target.closest("#rail-toggle");
+          var lg = e.target.closest && e.target.closest("#logo-expand");
+          if (!rt && !lg) return;
+          // The logo only acts as expand, and only while collapsed; otherwise it's inert.
+          if (lg && !rt && !html.classList.contains("nav-rail")) return;
+          var on = html.classList.toggle("nav-rail");
           try { localStorage.setItem("ccaudit-nav-rail", on ? "1" : "0"); } catch (e2) {}
         });
       })();

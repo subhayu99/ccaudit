@@ -3,6 +3,7 @@ import { getDb } from "../../db/init.js";
 import { getLibraryTree } from "../../db/library.js";
 import { clusterTopics, assignNewSessions, type TopicItem } from "../../labeling/cluster-topics.js";
 import { replaceTopics, addToTopics, getClusteredSessionIds, listTopics } from "../../db/topics.js";
+import { beginJob, endJob } from "../../lib/jobs.js";
 
 /**
  * Cluster sessions into cross-session topics with one Claude (Haiku) call.
@@ -23,6 +24,10 @@ export const POST: APIRoute = async ({ request }) => {
     return new Response(JSON.stringify({ topics: 0, newlyClustered: 0 }), { status: 200, headers: { "Content-Type": "application/json" } });
   }
 
+  // One clustering run at a time, process-wide — so other pages show it in progress and can't re-fire it.
+  if (!beginJob("cluster")) {
+    return new Response(JSON.stringify({ error: "A clustering run is already in progress." }), { status: 409, headers: { "Content-Type": "application/json" } });
+  }
   try {
     if (force) {
       const { topics, costUsd } = await clusterTopics(allItems);
@@ -61,5 +66,7 @@ export const POST: APIRoute = async ({ request }) => {
     // Timeout -> 504; known CLI failures (missing CLI, non-zero exit, non-JSON) -> 400.
     const status = (e as { isTimeout?: boolean })?.isTimeout ? 504 : 400;
     return new Response(JSON.stringify({ error: message }), { status });
+  } finally {
+    endJob("cluster");
   }
 };

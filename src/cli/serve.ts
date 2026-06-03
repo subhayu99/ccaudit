@@ -1,4 +1,4 @@
-import { spawn, exec } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,8 @@ import { readConfig, writeConfig } from "../lib/config.js";
 import { installAgent, agentInstalled } from "../lib/launchd.js";
 import { setTimeout as wait } from "node:timers/promises";
 import { sqliteChildArgs } from "../lib/sqlite-runtime.js";
+import { openInBrowser } from "../lib/open-browser.js";
+import { writeServeState, clearServeState } from "../lib/runtime.js";
 
 /** Package root = parent of the CLI bundle (dist/index.js → <pkg>). */
 function packageRoot(): string {
@@ -119,12 +121,14 @@ export async function serveCommand(opts: { port?: string; open?: boolean; watch?
         env: { ...process.env },
       });
 
+  // Record where we're serving so `ccaudit open` can reuse this instance instead of rebooting.
+  writeServeState({ port: portNum, pid: process.pid, host: "127.0.0.1", startedAt: started });
   // Surface child failures instead of hanging forever.
   server.on("error", (err) => {
     console.error(kleur.red(`Failed to start server: ${err.message}`));
     process.exit(1);
   });
-  server.on("exit", (code) => process.exit(code ?? 0));
+  server.on("exit", (code) => { clearServeState(); process.exit(code ?? 0); });
 
   if (opts.open !== false && !process.env.SSH_TTY) {
     const url = `http://127.0.0.1:${port}`;
@@ -133,11 +137,7 @@ export async function serveCommand(opts: { port?: string; open?: boolean; watch?
       try {
         const res = await fetch(url);
         if (res.ok) {
-          const cmd =
-            process.platform === "darwin" ? `open "${url}"`
-            : process.platform === "win32" ? `start "" "${url}"`
-            : `xdg-open "${url}"`;
-          exec(cmd);
+          openInBrowser(url);
           break;
         }
       } catch { /* not ready yet */ }
@@ -145,7 +145,7 @@ export async function serveCommand(opts: { port?: string; open?: boolean; watch?
     }
   }
 
-  const cleanup = () => { server.kill("SIGTERM"); process.exit(0); };
+  const cleanup = () => { clearServeState(); server.kill("SIGTERM"); process.exit(0); };
   process.on("SIGINT", cleanup);
   process.on("SIGTERM", cleanup);
   await new Promise(() => {});

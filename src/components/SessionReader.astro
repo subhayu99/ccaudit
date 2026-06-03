@@ -20,7 +20,7 @@ const db = getDb();
 const session = getSession(db, sessionId);
 // How many recent visible turns to render. Default 500; "Load earlier" raises it via ?show=.
 const showParam = Math.trunc(Number(Astro.url.searchParams.get("show")));
-const SHOW = Number.isFinite(showParam) && showParam > 0 ? Math.min(showParam, 20000) : 500;
+const SHOW = Number.isFinite(showParam) && showParam > 0 ? Math.min(showParam, 50000) : 500;
 // Only load what we'll render: the tail for huge sessions (raw includes noise, ~6 raw msgs per
 // visible turn). Load all once the requested window would cover the whole session.
 const RAW_TAIL = Math.max(2500, SHOW * 6);
@@ -53,6 +53,11 @@ const firstShownLine = visible.length ? visible[0]!.m.lineNo : null;
 const earlierUrl = new URL(Astro.url);
 earlierUrl.searchParams.set("show", String(SHOW + 1000));
 const earlierHref = `${earlierUrl.pathname}${earlierUrl.search}${firstShownLine !== null ? `#m${firstShownLine}` : ""}`;
+// "Load entire conversation" — render every visible turn in one go (message_count ≥ visible turns,
+// so this always covers the whole session; SHOW is capped at 50k for memory safety).
+const allUrl = new URL(Astro.url);
+allUrl.searchParams.set("show", String(session ? Math.max(session.messageCount, SHOW + 1) : 50000));
+const allHref = `${allUrl.pathname}${allUrl.search}${firstShownLine !== null ? `#m${firstShownLine}` : ""}`;
 
 // Map each segment's opening line to the segment so we can drop a divider there.
 const segByStartLine = new Map(segments.map((s) => [s.startLine, s]));
@@ -120,7 +125,14 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
         <a href="/" style="color:var(--text-faint); text-decoration:none;">← Library</a>
         {session.gitBranch && <><span>·</span><span class="font-mono-w">{session.gitBranch}</span></>}
       </div>
-      <h1 class="font-serif text-[24px] font-semibold leading-tight" style="color:var(--text); max-width:62ch;">{title}</h1>
+      <div class="title-row" data-sid={session.id} style="display:flex; align-items:flex-start; gap:8px; max-width:64ch;">
+        <h1 id="sess-title" class="font-serif text-[24px] font-semibold leading-tight" style="color:var(--text); flex:0 1 auto; min-width:0;">{title}</h1>
+        <input id="sess-title-input" class="sess-title-input" type="text" maxlength="200" value={title} style="display:none;" />
+        <div class="title-btns">
+          <button id="ai-title-btn" class="title-mini" title="Generate a better title with AI"><span class="ai-spin2" aria-hidden="true"></span><span class="tm-ico">✨</span></button>
+          <button id="edit-title-btn" class="title-mini" title="Edit title">✎</button>
+        </div>
+      </div>
       <div class="flex items-center gap-4 mt-3 text-[12.5px] flex-wrap" style="color:var(--text-dim);">
         <span>{session.messageCount.toLocaleString()} messages</span>
         {session.compactCount > 0 && <span style="color:var(--c-orange);">⊟ {session.compactCount} compacts</span>}
@@ -135,6 +147,7 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
       {hasEarlier && (
         <div class="trunc-note">
           <span>⤒ Showing the latest {visible.length.toLocaleString()} turns — earlier history is hidden for performance.</span>
+          <a class="load-earlier" href={allHref}>⤓ Load entire conversation</a>
           <a class="load-earlier" href={earlierHref}>⤒ Load 1,000 earlier</a>
         </div>
       )}
@@ -228,6 +241,19 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
   .trunc-note { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:var(--panel); border:1px dashed var(--border); border-radius:9px; padding:9px 13px; margin-bottom:20px; font-size:12.5px; color:var(--text-faint); max-width:74ch; }
   .load-earlier { margin-left:auto; background:var(--raise); color:var(--amber-bright); border:1px solid var(--border); border-radius:7px; padding:4px 12px; font-size:12px; text-decoration:none; white-space:nowrap; }
   .load-earlier:hover { background:var(--panel-2); }
+  /* Per-session title controls (AI re-title + manual edit). */
+  .title-btns { display:flex; gap:4px; flex:none; margin-top:5px; }
+  .title-mini { display:inline-flex; align-items:center; justify-content:center; min-width:26px; height:26px; padding:0 6px;
+    background:var(--raise); border:1px solid var(--border); border-radius:7px; color:var(--text-dim); cursor:pointer; font-size:13px; }
+  .title-mini:hover { color:var(--text); border-color:var(--amber); }
+  .title-mini[data-busy="1"] { opacity:.7; cursor:default; }
+  .title-mini[data-busy="1"] .tm-ico { display:none; }
+  .ai-spin2 { display:none; width:11px; height:11px; border:1.6px solid var(--border); border-top-color:var(--amber-bright);
+    border-radius:50%; animation:ccspin2 .7s linear infinite; }
+  .title-mini[data-busy="1"] .ai-spin2 { display:inline-block; }
+  @keyframes ccspin2 { to { transform:rotate(360deg); } }
+  .sess-title-input { flex:1; min-width:0; font:600 22px/1.2 var(--font, inherit); font-family:Georgia,'Times New Roman',serif;
+    background:var(--canvas); color:var(--text); border:1px solid var(--amber); border-radius:8px; padding:4px 10px; }
   /* Anchored jumps (thread nav, deep-links) clear the sticky header. */
   .seg-divider, .compact-divider { scroll-margin-top:124px; }
   .turn { margin-bottom:22px; max-width:74ch; scroll-margin-top:124px; }
@@ -359,6 +385,53 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
         toBottom();
         setTimeout(toBottom, 60); // re-pin after late layout shifts (web-font swap, etc.)
       }
+    });
+  })();
+</script>
+<script is:inline>
+  // Per-session title controls: ✎ inline manual rename + ✨ AI re-title. Both persist via /api/name.
+  (function () {
+    const row = document.querySelector(".title-row");
+    if (!row) return;
+    const sid = row.getAttribute("data-sid");
+    const h1 = document.getElementById("sess-title");
+    const input = document.getElementById("sess-title-input");
+    const editBtn = document.getElementById("edit-title-btn");
+    const aiBtn = document.getElementById("ai-title-btn");
+
+    function showEditor(on) {
+      input.style.display = on ? "" : "none";
+      h1.style.display = on ? "none" : "";
+      if (on) { input.value = h1.textContent.trim(); input.focus(); input.select(); }
+    }
+    async function save() {
+      const title = input.value.trim();
+      showEditor(false);
+      if (!title || title === h1.textContent.trim()) return; // unchanged / empty → no-op
+      const prev = h1.textContent;
+      h1.textContent = title; // optimistic
+      try {
+        const res = await fetch("/api/name", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "set", id: sid, title }) });
+        if (!res.ok) h1.textContent = prev;
+      } catch { h1.textContent = prev; }
+    }
+    if (editBtn) editBtn.addEventListener("click", () => showEditor(true));
+    if (input) {
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); save(); }
+        else if (e.key === "Escape") { input.value = h1.textContent.trim(); showEditor(false); } // cancel
+      });
+      input.addEventListener("blur", save);
+    }
+    if (aiBtn) aiBtn.addEventListener("click", async () => {
+      if (aiBtn.dataset.busy === "1") return; // ignore repeat taps while running
+      aiBtn.dataset.busy = "1";
+      try {
+        const res = await fetch("/api/name", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "one", id: sid }) });
+        const j = await res.json().catch(() => ({}));
+        if (res.ok && j.title) h1.textContent = j.title;
+      } catch { /* leave title as-is on failure */ }
+      aiBtn.dataset.busy = "";
     });
   })();
 </script>

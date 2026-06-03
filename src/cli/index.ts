@@ -10,6 +10,7 @@ import { topicsCommand } from "./topics.js";
 import { nameCommand } from "./name.js";
 import { watchCommand, watchTickCommand } from "./watch.js";
 import { liveCommand } from "./live.js";
+import { openCommand } from "./open.js";
 import { nativeBindingHelp } from "./native-error.js";
 import { version as pkgVersion } from "../../package.json";
 import { spawnSync } from "node:child_process";
@@ -112,6 +113,12 @@ program
   .command("live")
   .description("Show running (and recently-ended) Claude Code sessions")
   .action(liveCommand);
+
+program
+  .command("open")
+  .description("Open the ccaudit UI in your browser — reuses a running instance (no re-index), else starts one")
+  .option("--port <port>", "port to use if a new instance must be started")
+  .action(openCommand);
 
 program.parseAsync().catch((err) => {
   const help = nativeBindingHelp(err);
