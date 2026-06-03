@@ -2,7 +2,7 @@
 import AppShell from "../layouts/AppShell.astro";
 import Sidebar from "../components/Sidebar.astro";
 import { getDb } from "../db/init";
-import { searchMessages, searchMessagesExact, searchMessagesRegex } from "../db/messages";
+import { searchMessages, searchMessagesExact, searchMessagesRegex, searchSessionIdsByTitle } from "../db/messages";
 import { getSessionsByIds } from "../db/sessions";
 import { getLibraryTree } from "../db/library";
 import { listTopics } from "../db/topics";
@@ -55,6 +55,21 @@ if (query) {
       g.lines.sort((a, b) => a.lineNo - b.lineNo);
       return g;
     });
+    // Also surface sessions matching by TITLE or ID (even with no message-content hit).
+    const titleIds = searchSessionIdsByTitle(db, query, { range }).filter((id) => !map.has(id));
+    if (titleIds.length) {
+      const ts = getSessionsByIds(db, titleIds);
+      for (const id of titleIds) {
+        const s: Session | undefined = ts.get(id);
+        groups.push({
+          sessionId: id,
+          title: (s?.aiTitle || s?.firstPrompt || id.slice(0, 8)).replace(/\s+/g, " ").trim(),
+          sub: s?.projectLabel ?? "unknown",
+          lastActivity: s?.lastActivity ?? null,
+          lines: [],
+        });
+      }
+    }
   } catch (e) {
     searchError = e instanceof Error ? e.message : String(e);
   }

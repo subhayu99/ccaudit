@@ -183,6 +183,33 @@ function contextSnippet(text: string, query: string, contextChars = 80): string 
   return highlightExact(slice, query);
 }
 
+/**
+ * Session ids whose AI title, first prompt, or id contains `query` — so search can surface a session
+ * that matches by title/ID even when no message content matched. Respects exclusions + date range.
+ */
+export function searchSessionIdsByTitle(
+  db: Db,
+  query: string,
+  opts: { limit?: number; range?: DateRange | null } = {}
+): string[] {
+  const q = query.trim();
+  if (q.length < 2) return [];
+  const excl = sessionKeepCondition(db);
+  const rg = rangeCondition(opts.range ?? null, "last_activity");
+  const rows = db
+    .prepare(
+      `SELECT id FROM sessions
+        WHERE (instr(lower(COALESCE(ai_title, '')), lower(@q)) > 0
+            OR instr(lower(COALESCE(first_prompt, '')), lower(@q)) > 0
+            OR instr(lower(id), lower(@q)) > 0)
+          AND ${excl.sql} AND ${rg.sql}
+        ORDER BY last_activity DESC
+        LIMIT @limit`
+    )
+    .all({ q, limit: opts.limit ?? 40, ...excl.params, ...rg.params }) as Array<{ id: string }>;
+  return rows.map((r) => r.id);
+}
+
 export function searchMessagesExact(
   db: Db,
   query: string,

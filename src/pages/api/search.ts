@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { getDb } from "../../db/init.js";
-import { searchMessages } from "../../db/messages.js";
+import { searchMessages, searchSessionIdsByTitle } from "../../db/messages.js";
 import { getSessionsByIds } from "../../db/sessions.js";
 import { resolveRange } from "../../db/date-range.js";
 
@@ -39,6 +39,17 @@ export const GET: APIRoute = ({ url, cookies }) => {
       const lines = byId.get(sessionId)!.sort((a, b) => a.lineNo - b.lineNo);
       return { sessionId, title, sub, count: lines.length, lines };
     });
+
+    // Also surface sessions whose TITLE or ID matches (even with no message-content hit).
+    const titleIds = searchSessionIdsByTitle(db, q, { range }).filter((id) => !byId.has(id));
+    if (titleIds.length) {
+      const ts = getSessionsByIds(db, titleIds);
+      for (const id of titleIds) {
+        const s = ts.get(id);
+        const t = (s?.aiTitle || s?.firstPrompt || id.slice(0, 8)).replace(/\s+/g, " ").trim();
+        groups.push({ sessionId: id, title: t, sub: s?.projectLabel ?? "", count: 0, lines: [] });
+      }
+    }
     return json({ q, total: hits.length, groups });
   } catch (e) {
     return json({ q, total: 0, groups: [], error: e instanceof Error ? e.message : String(e) }, 500);
