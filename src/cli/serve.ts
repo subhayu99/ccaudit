@@ -110,15 +110,18 @@ export async function serveCommand(opts: { port?: string; open?: boolean; watch?
   }
 
   console.log(kleur.dim(`Starting server on http://127.0.0.1:${port} ...`));
+  // Forward the real CLI path so the SSR child's /api/mcp can register ccaudit with
+  // Claude Code (`claude mcp add -- <node> <cli> mcp`). argv[1] is the ccaudit bundle.
+  const cliPath = process.argv[1] ?? "";
   const server = built
     ? spawn(process.execPath, [...sqliteChildArgs(), entry], {
         stdio: "inherit",
-        env: { ...process.env, HOST: "127.0.0.1", PORT: port },
+        env: { ...process.env, HOST: "127.0.0.1", PORT: port, CCAUDIT_CLI_PATH: cliPath },
       })
     : spawn("npx", ["astro", "dev", "--port", port, "--host", "127.0.0.1"], {
         cwd: existsSync(join(root, "astro.config.mjs")) ? root : process.cwd(),
         stdio: "inherit",
-        env: { ...process.env },
+        env: { ...process.env, CCAUDIT_CLI_PATH: cliPath },
       });
 
   // Record where we're serving so `ccaudit open` can reuse this instance instead of rebooting.

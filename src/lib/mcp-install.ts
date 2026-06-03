@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
 const pexec = promisify(execFile);
 
@@ -32,4 +34,27 @@ export async function installMcp(nodePath: string, cliPath: string): Promise<voi
 
 export async function uninstallMcp(): Promise<void> {
   await pexec("claude", ["mcp", "remove", MCP_NAME, "--scope", "user"]);
+}
+
+/** Combined status for the UI — one place so callers don't double-spawn `claude`. */
+export async function mcpStatus(): Promise<{ claudeAvailable: boolean; registered: boolean }> {
+  const claudeAvailable = await isClaudeCliAvailable();
+  const registered = claudeAvailable ? await isMcpRegistered() : false;
+  return { claudeAvailable, registered };
+}
+
+/**
+ * The ccaudit CLI entry that `claude` should spawn (`node <cli> mcp`).
+ *
+ * `/api/*` routes run inside the Astro SSR child, where `process.argv[1]` is the
+ * web-server entry — NOT the ccaudit CLI. `ccaudit serve` therefore forwards the
+ * real CLI path via CCAUDIT_CLI_PATH (see serve.ts). Falls back to a built
+ * `dist/index.js` under the cwd for `astro dev`. Returns null if neither is found.
+ */
+export function resolveCliPath(): string | null {
+  const fromEnv = process.env.CCAUDIT_CLI_PATH;
+  if (fromEnv && existsSync(fromEnv)) return fromEnv;
+  const local = join(process.cwd(), "dist", "index.js");
+  if (existsSync(local)) return local;
+  return null;
 }

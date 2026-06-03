@@ -121,9 +121,18 @@ const nameRunning = isJobRunning("name");
     ))}
     </div>
   </nav>
-  <div class="flex items-center gap-3 px-4 py-2.5 text-[12.5px] rail-hide" style="border-top:1px solid var(--border-soft); color:var(--text-dim);">
-    <a href="/projects" style="color:var(--text-dim); text-decoration:none;" title="Manage hidden directories">⌫ Hidden</a>
-    <button id="theme-toggle" class="ml-auto" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:12.5px;" title="Toggle theme">☾ Theme</button>
+  <div class="rail-hide" style="border-top:1px solid var(--border-soft);">
+    <div id="mcp-tools" class="px-4 pt-2.5 pb-1.5">
+      <span class="text-[10.5px] tracking-wider uppercase font-semibold" style="color:var(--text-faint);">Claude Code</span>
+      <div class="flex items-center gap-2 mt-1.5">
+        <button id="mcp-connect" class="title-act" title="Register ccaudit as an MCP server so Claude Code can query your session history"><span class="ai-spin" aria-hidden="true"></span><span class="mcp-lbl">⧉ Connect</span></button>
+      </div>
+      <div id="mcp-note" class="text-[11px] mt-1" style="display:none;color:var(--text-faint);word-break:break-word;"></div>
+    </div>
+    <div class="flex items-center gap-3 px-4 pb-2.5 pt-1 text-[12.5px]" style="color:var(--text-dim);">
+      <a href="/projects" style="color:var(--text-dim); text-decoration:none;" title="Manage hidden directories">⌫ Hidden</a>
+      <button id="theme-toggle" class="ml-auto" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:12.5px;" title="Toggle theme">☾ Theme</button>
+    </div>
   </div>
 </div>
 
@@ -400,4 +409,72 @@ const nameRunning = isJobRunning("name");
   }
   refreshRunning();
   setInterval(refreshRunning, 15000);
+</script>
+
+<script>
+  // "Connect Claude Code": register/unregister ccaudit as an MCP server via /api/mcp
+  // (which shells out to the user's `claude` CLI). Status is fetched once on load so the
+  // button reflects reality without blocking server render.
+  const mcpBtn = document.getElementById("mcp-connect") as HTMLButtonElement | null;
+  const mcpNote = document.getElementById("mcp-note");
+  let mcpRegistered = false;
+
+  function mcpLabel() {
+    const lbl = mcpBtn?.querySelector(".mcp-lbl");
+    if (lbl) lbl.textContent = mcpRegistered ? "✓ Connected — disconnect" : "⧉ Connect";
+  }
+  function mcpSay(text: string, bad = false) {
+    if (!mcpNote) return;
+    mcpNote.textContent = text;
+    mcpNote.style.color = bad ? "#d77" : "var(--text-faint)";
+    mcpNote.style.display = text ? "" : "none";
+  }
+  function mcpApply(s: { registered: boolean; claudeAvailable: boolean; manualCommand?: string | null }) {
+    if (!mcpBtn) return;
+    mcpRegistered = s.registered;
+    mcpBtn.dataset.busy = ""; mcpBtn.disabled = false;
+    if (!s.claudeAvailable) {
+      const lbl = mcpBtn.querySelector(".mcp-lbl");
+      if (lbl) lbl.textContent = "⧉ Claude Code not found";
+      mcpBtn.disabled = true;
+      mcpBtn.title = "The `claude` CLI isn't on your PATH.";
+      mcpSay(s.manualCommand ? "Add it manually: " + s.manualCommand : "");
+      return;
+    }
+    mcpLabel();
+    mcpBtn.title = mcpRegistered
+      ? "ccaudit is registered with Claude Code — click to remove."
+      : "Register ccaudit as an MCP server so Claude Code can query your session history.";
+  }
+
+  if (mcpBtn) {
+    fetch("/api/mcp").then((r) => (r.ok ? r.json() : null)).then((s) => { if (s) mcpApply(s); }).catch(() => {});
+
+    mcpBtn.addEventListener("click", async () => {
+      if (mcpBtn.dataset.busy === "1" || mcpBtn.disabled) return;
+      const action = mcpRegistered ? "uninstall" : "install";
+      mcpBtn.dataset.busy = "1"; mcpBtn.disabled = true;
+      const lbl = mcpBtn.querySelector(".mcp-lbl");
+      if (lbl) lbl.textContent = action === "install" ? "Connecting…" : "Disconnecting…";
+      mcpSay("");
+      try {
+        const res = await fetch("/api/mcp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+        const j = await res.json().catch(() => ({})) as { ok?: boolean; registered?: boolean; already?: boolean; claudeAvailable?: boolean; manualCommand?: string; error?: string };
+        if (j.ok) {
+          mcpApply({ registered: !!j.registered, claudeAvailable: true });
+          mcpSay(action === "install"
+            ? (j.already ? "Already connected — run /mcp in Claude Code." : "Connected ✓ — restart Claude Code or run /mcp to load ccaudit's tools.")
+            : "Disconnected.");
+        } else if (j.claudeAvailable === false) {
+          mcpApply({ registered: false, claudeAvailable: false, manualCommand: j.manualCommand });
+        } else {
+          mcpBtn.dataset.busy = ""; mcpBtn.disabled = false; mcpLabel();
+          mcpSay("Failed: " + (j.error || "HTTP " + res.status), true);
+        }
+      } catch (err) {
+        mcpBtn.dataset.busy = ""; mcpBtn.disabled = false; mcpLabel();
+        mcpSay("Failed: " + (err as Error).message, true);
+      }
+    });
+  }
 </script>
