@@ -94,6 +94,8 @@ program
 program
   .command("mcp")
   .description("Start an MCP stdio server exposing session-history query tools")
+  .option("--install", "register ccaudit as an MCP server in Claude Code (asks first; user scope)")
+  .option("--uninstall", "remove ccaudit from Claude Code's MCP servers")
   .action(mcpCommand);
 
 program
