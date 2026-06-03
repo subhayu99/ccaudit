@@ -1,0 +1,102 @@
+name: Release
+
+# Tag-driven release. To cut a version:
+#   npm version minor   # bumps package.json + creates the v<x.y.z> tag
+#   git push && git push --tags
+# Pushing the tag runs this workflow: publish to npm, then bump the Homebrew formula.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write # required for npm Trusted Publishing (OIDC) + provenance
+
+jobs:
+  npm:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Tag must match package.json version
+        run: |
+          PKG="$(node -p "require('./package.json').version")"
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$PKG" != "$TAG" ]; then
+            echo "::error::tag '${GITHUB_REF_NAME}' does not match package.json version '${PKG}'"
+            exit 1
+          fi
+
+      - run: npm ci # runs the `prepare` script → builds dist/ + dist-web/
+      - run: npm test
+
+      - name: Use an npm that supports Trusted Publishing
+        run: npm install -g npm@latest
+
+      - name: Publish (Trusted Publishing / OIDC — no token needed)
+        run: npm publish
+        # Using a classic automation token instead of Trusted Publishing?
+        # Replace the line above with:
+        #   run: npm publish
+        #   env:
+        #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  homebrew:
+    name: Bump Homebrew formula
+    needs: npm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Bump subhayu99/homebrew-tap → Formula/ccaudit.rb
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN is not set — skipping the brew bump."
+            echo "Add a fine-grained PAT (Contents: read & write on homebrew-tap) as the"
+            echo "HOMEBREW_TAP_TOKEN secret on this repo to enable automatic formula bumps."
+            exit 0
+          fi
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          PKG="@subhayu99/ccaudit"
+
+          # npm can take a few seconds to expose a freshly published tarball.
+          URL=""
+          for i in $(seq 1 20); do
+            URL="$(npm view "${PKG}@${VERSION}" dist.tarball 2>/dev/null || true)"
+            [ -n "$URL" ] && break
+            echo "waiting for ${PKG}@${VERSION} to appear on npm… (${i})"
+            sleep 6
+          done
+          if [ -z "$URL" ]; then
+            echo "::error::tarball for ${VERSION} not found on npm"
+            exit 1
+          fi
+
+          curl -fsSL "$URL" -o pkg.tgz
+          SHA="$(sha256sum pkg.tgz | cut -d' ' -f1)"
+          echo "version=${VERSION}"
+          echo "url=${URL}"
+          echo "sha256=${SHA}"
+
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/subhayu99/homebrew-tap.git" tap
+          cd tap
+          sed -i -E "s|^( *url ).*|\1\"${URL}\"|"    Formula/ccaudit.rb
+          sed -i -E "s|^( *sha256 ).*|\1\"${SHA}\"|" Formula/ccaudit.rb
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "formula already up to date — nothing to bump"
+            exit 0
+          fi
+          git commit -am "ccaudit ${VERSION}"
+          git push
