@@ -91,13 +91,17 @@ ccaudit is the layer between you and the pile of JSONL Claude Code leaves behind
 - **Global date-range filter.** All / last 7d / last 30d / a custom calendar range — scopes the list, search, graph, topics, and dashboard at once.
 - **Hide the noise.** Hide whole directories, individual sessions, or reusable phrase/regex rules from every view — lossless and instant; manage them all on the Hidden page.
 - **Faithful transcripts.** GitHub-flavored markdown including tables, syntax-highlighted code, and grouped tool calls. Conductor `<system_instruction>` preambles, claude-mem observer wrappers, and slash-command echoes are stripped so titles and the reader show the real conversation — originals are always preserved.
+- **Export a transcript.** Download any session as clean **Markdown** or a self-contained **HTML** file from the reader (or `ccaudit export`) — the readable conversation by default, tool calls included with `--raw`.
 - **Warm-obsidian theme**, dark-first with a light (parchment) toggle. Responsive down to mobile.
 
 ## CLI
 
 ```
 ccaudit                       # serve the browser UI (default).  --port <n>  --no-open
+ccaudit start                 # run the UI in the background (survives the terminal) and open it
+ccaudit stop                  # stop the background server          ccaudit status  # is it running?
 ccaudit open                  # open the UI in your browser — reuses a running instance (no re-index)
+ccaudit export <id>           # save a session transcript to Markdown/HTML  --format md|html  --raw  --out <path>
 ccaudit reindex [--force]     # rebuild the SQLite index from ~/.claude/projects/
 ccaudit list [--project d]    # list indexed sessions in a table   --limit <n>
 ccaudit search <query>        # full-text search from the terminal  --limit <n>
@@ -110,6 +114,10 @@ ccaudit live                  # show running (and recently-ended) Claude Code se
 ccaudit watch --install       # (macOS) background watcher so running sessions survive restarts
                               #   --uninstall  --status
 ```
+
+> **Running it persistently:** `ccaudit` (or `ccaudit start`) serves the UI; `start` detaches so it
+> keeps running after you close the terminal (`ccaudit stop` to end it). `ccaudit open` just opens the
+> browser to an already-running instance without re-indexing.
 
 ## Connect to Claude Code (MCP)
 
@@ -149,6 +157,7 @@ claude mcp add ccaudit -- npx -y @subhayu99/ccaudit mcp
 | `search_sessions` | Full-text search across every message — `fts` (smart, default), `exact`, or `regex` |
 | `list_sessions`   | Recent sessions, newest first; optional project filter |
 | `get_session`     | A session's metadata and (optionally) its full conversation, noise filtered |
+| `get_messages`    | Messages by author — `user`, `assistant`, `tool`, or `agent` (sub-agent turns) — in one session or across all of them, with an optional `contains` filter |
 | `index_stats`     | Corpus-wide stats — session/message counts, spend, date span |
 
 Then just ask: *"Search my ccaudit history for when I set up the auth flow"* or *"What did I decide about the DB schema last month?"* — and Claude answers from your own past sessions. (After connecting, restart Claude Code or run `/mcp` to load the tools.)
