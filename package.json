@@ -1,6 +1,6 @@
 {
   "name": "@subhayu99/ccaudit",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Browse, search, and audit your Claude Code session history",
   "type": "module",
   "author": "subhayu99",
