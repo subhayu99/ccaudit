@@ -72,3 +72,26 @@ export function classifyMessage(m: MessageRow): MessageKind {
   // Unknown types → noise rather than an ugly fallback box.
   return "noise";
 }
+
+/** Author buckets for role-filtered retrieval (the `get_messages` MCP tool). */
+export type MessageAuthor = "user" | "assistant" | "tool" | "agent";
+
+/**
+ * Which author a message belongs to, or null if it's noise/meta/attachment.
+ * Sub-agent (Task) turns are "agent" regardless of their inner role — that's the
+ * category callers mean by "agents". Otherwise we map the visible message kind.
+ */
+export function authorOf(m: MessageRow): MessageAuthor | null {
+  if (m.isSidechain) return "agent";
+  switch (classifyMessage(m)) {
+    case "user-text":
+      return "user";
+    case "assistant-text":
+      return "assistant";
+    case "tool-use":
+    case "tool-result":
+      return "tool";
+    default:
+      return null; // noise, attachment, compact-summary
+  }
+}

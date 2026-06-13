@@ -2,6 +2,7 @@ import type { Db } from "./init.js";
 import type { MessageRow, SearchHit } from "../types.js";
 import { sessionKeepCondition } from "./exclusions.js";
 import { rangeCondition, type DateRange } from "./date-range.js";
+import { authorOf, type MessageAuthor } from "../lib/message-kind.js";
 
 type MessageRowSql = {
   session_id: string;
@@ -104,6 +105,77 @@ export function getSessionMessagesHead(
     .prepare("SELECT * FROM messages WHERE session_id = ? ORDER BY line_no ASC LIMIT ?")
     .all(sessionId, limit) as MessageRowSql[];
   return rows.map(rowToMessage);
+}
+
+/**
+ * Messages by author — one session (exact) or across the whole corpus (recent first).
+ *
+ * Author is decided by `authorOf` (kind-aware: sub-agent turns are "agent", tool
+ * calls/results are "tool"), not the raw `role` column — so e.g. tool-result turns
+ * tagged role='user' aren't returned as the user's own prompts.
+ *
+ * Global path: a SQL prefilter (author hint + exclusions + range) bounds the scan,
+ * then JS refines by `authorOf`. We over-fetch a buffer so refinement + the optional
+ * `contains` filter still yield up to `limit` rows. Newest-first.
+ */
+export function getMessagesByAuthor(
+  db: Db,
+  opts: {
+    author: MessageAuthor;
+    sessionId?: string;
+    contains?: string;
+    limit?: number;
+    range?: DateRange | null;
+  }
+): MessageRow[] {
+  const limit = Math.max(1, opts.limit ?? 50);
+  const contains = opts.contains?.trim();
+  const containsLc = contains?.toLowerCase();
+
+  // Per-session: load the whole (small) session, classify, filter. Exact and simple.
+  if (opts.sessionId) {
+    let msgs = getSessionMessages(db, opts.sessionId).filter((m) => authorOf(m) === opts.author);
+    if (containsLc) msgs = msgs.filter((m) => (m.textContent ?? "").toLowerCase().includes(containsLc));
+    return msgs.slice(0, limit);
+  }
+
+  // Global: prefilter at the SQL level to keep the scan bounded.
+  const excl = sessionKeepCondition(db);
+  const exclClause =
+    excl.sql === "1" ? "" : `AND session_id IN (SELECT id FROM sessions WHERE ${excl.sql})`;
+  const rg = rangeCondition(opts.range ?? null, "last_activity");
+  const rangeClause =
+    rg.sql === "1" ? "" : `AND session_id IN (SELECT id FROM sessions WHERE ${rg.sql})`;
+  // Author hints (code-controlled, safe to inline). "tool" has no reliable column
+  // signal (tool blocks live in raw_json), so it scans recent candidates instead.
+  const authorClause =
+    opts.author === "agent"
+      ? "AND is_sidechain = 1"
+      : opts.author === "user"
+        ? "AND is_sidechain = 0 AND (role = 'user' OR type = 'user')"
+        : opts.author === "assistant"
+          ? "AND is_sidechain = 0 AND (role = 'assistant' OR type = 'assistant')"
+          : "AND is_sidechain = 0";
+  const containsClause = contains ? "AND text_content LIKE @like" : "";
+  // Over-fetch: JS refinement + contains drop rows, so pull a buffer to still fill `limit`.
+  const buffer = Math.min(2000, Math.max(limit * 5, 100));
+  const rows = db
+    .prepare(
+      `SELECT * FROM messages
+        WHERE 1=1 ${authorClause} ${exclClause} ${rangeClause} ${containsClause}
+        ORDER BY timestamp DESC
+        LIMIT @buffer`
+    )
+    .all({
+      buffer,
+      ...excl.params,
+      ...rg.params,
+      ...(contains ? { like: `%${contains}%` } : {}),
+    }) as MessageRowSql[];
+  return rows
+    .map(rowToMessage)
+    .filter((m) => authorOf(m) === opts.author)
+    .slice(0, limit);
 }
 
 /** Quote each whitespace term (doubling internal quotes) so operators/punctuation in arbitrary

@@ -6,6 +6,7 @@ import {
   toolListSessions,
   toolSearchSessions,
   toolGetSession,
+  toolGetMessages,
   toolIndexStats,
 } from "./tools.js";
 
@@ -53,6 +54,25 @@ export async function startMcpServer(): Promise<void> {
       },
     },
     async (args) => json(toolGetSession(db, args))
+  );
+
+  server.registerTool(
+    "get_messages",
+    {
+      description:
+        "Get messages by author — within one session or across your whole history. " +
+        "author: 'user' (your prompts), 'assistant' (Claude's replies), 'tool' (tool calls/results), " +
+        "or 'agent' (sub-agent / Task turns). Pass sessionId to scope to one session; otherwise returns " +
+        "the most recent matches across all sessions (newest first, hidden directories excluded). " +
+        "Optional `contains` filters to messages whose text includes that substring.",
+      inputSchema: {
+        author: z.enum(["user", "assistant", "tool", "agent"]),
+        sessionId: z.string().optional(),
+        contains: z.string().optional(),
+        limit: z.number().optional(),
+      },
+    },
+    async (args) => json(toolGetMessages(db, args))
   );
 
   server.registerTool(

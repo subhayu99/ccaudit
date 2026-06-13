@@ -126,6 +126,12 @@ export async function serveCommand(opts: { port?: string; open?: boolean; watch?
 
   // Record where we're serving so `ccaudit open` can reuse this instance instead of rebooting.
   writeServeState({ port: portNum, pid: process.pid, host: "127.0.0.1", startedAt: started });
+  console.log(
+    kleur.dim(`  Ctrl-C to stop · run in the background: `) +
+      kleur.reset("ccaudit start") +
+      kleur.dim(` · reopen later: `) +
+      kleur.reset("ccaudit open")
+  );
   // Surface child failures instead of hanging forever.
   server.on("error", (err) => {
     console.error(kleur.red(`Failed to start server: ${err.message}`));

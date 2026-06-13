@@ -29,3 +29,16 @@ export function readServeState(path = SERVE_STATE_PATH): ServeState | null {
 export function clearServeState(path = SERVE_STATE_PATH): void {
   try { rmSync(path, { force: true }); } catch { /* best-effort */ }
 }
+
+/** Liveness probe — does something actually answer at this URL? Any real HTTP response counts. */
+export async function isServeUp(url: string, ms = 1500): Promise<boolean> {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), ms);
+    const res = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(t);
+    return res.status < 500;
+  } catch {
+    return false;
+  }
+}

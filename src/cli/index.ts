@@ -11,6 +11,8 @@ import { nameCommand } from "./name.js";
 import { watchCommand, watchTickCommand } from "./watch.js";
 import { liveCommand } from "./live.js";
 import { openCommand } from "./open.js";
+import { exportCommand } from "./export.js";
+import { startCommand, stopCommand, statusCommand } from "./daemon.js";
 import { nativeBindingHelp } from "./native-error.js";
 import { version as pkgVersion } from "../../package.json";
 import { spawnSync } from "node:child_process";
@@ -121,6 +123,31 @@ program
   .description("Open the ccaudit UI in your browser — reuses a running instance (no re-index), else starts one")
   .option("--port <port>", "port to use if a new instance must be started")
   .action(openCommand);
+
+program
+  .command("start")
+  .description("Run the UI in the background (survives closing the terminal) and open it")
+  .option("--port <n>", "server port", "4321")
+  .option("--no-open", "don't auto-open the browser")
+  .action(startCommand);
+
+program
+  .command("stop")
+  .description("Stop the background ccaudit server")
+  .action(stopCommand);
+
+program
+  .command("status")
+  .description("Show whether ccaudit is running in the background, and where")
+  .action(statusCommand);
+
+program
+  .command("export <sessionId>")
+  .description("Export a session transcript to a Markdown or HTML file")
+  .option("--format <fmt>", "md | html", "md")
+  .option("--out <path>", "output file path (default: ~/.ccaudit/exports/…)")
+  .option("--raw", "include tool calls/results & system turns (default: clean conversation)")
+  .action(exportCommand);
 
 program.parseAsync().catch((err) => {
   const help = nativeBindingHelp(err);

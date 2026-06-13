@@ -5,7 +5,9 @@ import {
   searchMessagesExact,
   searchMessagesRegex,
   getSessionMessages,
+  getMessagesByAuthor,
 } from "../db/messages.js";
+import type { MessageAuthor } from "../lib/message-kind.js";
 import { getIndexStats } from "../db/stats.js";
 import { classifyMessage } from "../lib/message-kind.js";
 import { clampLimit } from "../cli/limit.js";
@@ -84,6 +86,26 @@ export function toolGetSession(
       isCompactSummary: m.isCompactSummary,
     }));
   return { ...base, messages: msgs };
+}
+
+export function toolGetMessages(
+  db: Db,
+  args: { author: MessageAuthor; sessionId?: string; contains?: string; limit?: number }
+) {
+  const limit = clampLimit(args.limit, 50);
+  const msgs = getMessagesByAuthor(db, {
+    author: args.author,
+    sessionId: args.sessionId,
+    contains: args.contains,
+    limit,
+  });
+  return msgs.map((m) => ({
+    sessionId: m.sessionId,
+    lineNo: m.lineNo,
+    author: args.author,
+    timestamp: m.timestamp,
+    text: m.textContent,
+  }));
 }
 
 export function toolIndexStats(db: Db) {
