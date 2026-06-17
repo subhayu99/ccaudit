@@ -85,7 +85,7 @@ ccaudit is the layer between you and the pile of JSONL Claude Code leaves behind
 - **Full-text search** in three modes: smart (FTS5 stemming + ranking), exact substring, and regex — results grouped by session and expandable inline.
 - **Ask your history** *(AI, optional)*. Pose a question and get a cited answer synthesized over your most relevant past sessions. Like topic clustering and session titling, this uses the local `claude` CLI — see [Privacy](#privacy).
 - **Topics.** AI-clustered themes across your sessions, scoped to the active date range, browsable from the sidebar and woven into the graph.
-- **AI session titles.** One-click **Smart-name** for untitled sessions (or **Re-name all**), plus a per-session ✨ to regenerate and ✎ to edit a title by hand.
+- **AI session titles.** One-click **Smart-name** for untitled sessions, **Name running** to (re)title the sessions you have open right now, or **Re-name all** — and bulk renames always do the live sessions first. Plus a per-session ✨ to regenerate and ✎ to edit a title by hand.
 - **Dashboard.** Total spend, token totals, **averages** ($/session, messages/session, active days), the history span, an activity heatmap, and a tool-usage breakdown.
 - **Cost tracking.** Per-session estimated AI spend pills; sort the list by most recent, highest cost, or most messages.
 - **Global date-range filter.** All / last 7d / last 30d / a custom calendar range — scopes the list, search, graph, topics, and dashboard at once.
