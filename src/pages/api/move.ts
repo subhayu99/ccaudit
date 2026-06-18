@@ -1,23 +1,16 @@
 import type { APIRoute } from "astro";
-import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { getDb } from "../../db/init.js";
 import { getSession } from "../../db/sessions.js";
 import { getSessionMessages } from "../../db/messages.js";
-import { CLAUDE_PROJECTS_DIR, CCAUDIT_DIR } from "../../paths.js";
 import { readConfig, writeConfig } from "../../lib/config.js";
 import { readLiveRegistry } from "../../watch/registry.js";
 import { getBootTime } from "../../lib/boot-time.js";
 import { suggestSessionHome } from "../../lib/session-dirs.js";
-import { rehomeSession } from "../../lib/rehome.js";
+import { REHOME_DISCLOSURE, applyRehomeToDb } from "../../lib/rehome-apply.js";
 
 const json = (obj: unknown, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
-
-const DISCLOSURE =
-  "Re-home moves the real Claude session file in ~/.claude/projects/… and rewrites its " +
-  "working directory — this changes Claude's data, not just ccaudit's index. The original is " +
-  "backed up to ~/.ccaudit/backups/rehome/ first, and running sessions are never touched.";
 
 function runningIds(): Set<string> {
   return new Set(readLiveRegistry({ bootTime: getBootTime(Date.now()) }).map((r) => r.sessionId));
@@ -36,7 +29,7 @@ export const GET: APIRoute = ({ url }) => {
     currentDir: s.cwd,
     running: runningIds().has(id),
     consentGiven: readConfig().rehomeConsent === "accepted",
-    disclosure: DISCLOSURE,
+    disclosure: REHOME_DISCLOSURE,
     suggestions: suggestions.map((x) => ({ dir: x.dir, hits: x.hits })),
   });
 };
@@ -57,24 +50,12 @@ export const POST: APIRoute = async ({ request }) => {
 
   // One-time consent gate before any write to ~/.claude.
   if (readConfig().rehomeConsent !== "accepted") {
-    if (!body.acknowledgeRisk) return json({ consentRequired: true, disclosure: DISCLOSURE });
+    if (!body.acknowledgeRisk) return json({ consentRequired: true, disclosure: REHOME_DISCLOSURE });
     writeConfig({ rehomeConsent: "accepted" });
   }
 
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   try {
-    const res = rehomeSession({
-      sessionId,
-      sourceFile: s.filePath,
-      oldCwd: s.cwd ?? "",
-      targetDir,
-      projectsRoot: CLAUDE_PROJECTS_DIR,
-      backupDir: join(CCAUDIT_DIR, "backups", "rehome"),
-      stamp,
-    });
-    // Fast, targeted re-grouping (a full reindex would re-sync the stored raw_json later).
-    db.prepare("UPDATE sessions SET project_dir = ?, cwd = ?, file_path = ? WHERE id = ?")
-      .run(targetDir, targetDir, res.targetFile, sessionId);
+    const res = applyRehomeToDb(db, s, targetDir);
     return json({ ok: true, movedTo: targetDir, file: res.targetFile, backup: res.backupFile, linesRewritten: res.linesRewritten });
   } catch (e) {
     return json({ error: (e as Error).message }, 500);

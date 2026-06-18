@@ -8,6 +8,8 @@ import {
   toolGetSession,
   toolGetMessages,
   toolIndexStats,
+  toolListMismatchedSessions,
+  toolApplySessionMoves,
 } from "./tools.js";
 
 function json(data: unknown) {
@@ -79,6 +81,37 @@ export async function startMcpServer(): Promise<void> {
     "index_stats",
     { description: "Overall stats about the indexed session corpus.", inputSchema: {} },
     async () => json(toolIndexStats(db))
+  );
+
+  server.registerTool(
+    "list_mismatched_sessions",
+    {
+      description:
+        "List sessions that look misfiled — launched/filed in one directory, but the work " +
+        "actually happened in another (e.g. Claude was opened in a parent folder, then asked to " +
+        "build in a subfolder, so `claude --resume` can't find the session from the real dir). " +
+        "Returns each session's inferred correct directory, the supporting path-reference evidence, " +
+        "and a `running` flag. Feed the chosen { sessionId, targetDir } pairs to apply_session_moves.",
+      inputSchema: { limit: z.number().optional() },
+    },
+    async (args) => json(toolListMismatchedSessions(db, args))
+  );
+
+  server.registerTool(
+    "apply_session_moves",
+    {
+      description:
+        "Re-home one or more misfiled sessions to the directory they actually worked in, so " +
+        "`claude --resume` finds them. Moves the real Claude session file in ~/.claude and rewrites " +
+        "its working directory; the original is backed up first and running sessions are skipped. " +
+        "Asks for consent once per machine: the first call returns { consentRequired, disclosure } and " +
+        "moves nothing — show the user the disclosure, then re-call with acknowledgeRisk: true.",
+      inputSchema: {
+        moves: z.array(z.object({ sessionId: z.string(), targetDir: z.string() })),
+        acknowledgeRisk: z.boolean().optional(),
+      },
+    },
+    async (args) => json(toolApplySessionMoves(db, args))
   );
 
   const transport = new StdioServerTransport();
