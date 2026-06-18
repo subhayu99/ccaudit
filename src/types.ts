@@ -20,6 +20,17 @@ export type Session = {
   indexedAt: number;
   /** Per-model token totals (assistant `message.usage`). null/absent if not yet captured. */
   tokenUsage?: TokenUsage | null;
+  /**
+   * Work-dir inference (precomputed at index time, see lib/session-dirs.ts).
+   * `inferredDir` is the project root where the work actually happened when it
+   * differs from where the session is filed (a misfiled session); null when the
+   * session is filed correctly. The hit counts are the supporting evidence.
+   * Optional like `tokenUsage` — index-derived, persisted with DB defaults, so a
+   * producer may omit them (the upsert defaults to null/0).
+   */
+  inferredDir?: string | null;
+  inferredHits?: number;
+  inferredLaunchHits?: number;
 };
 
 export type MessageRow = {

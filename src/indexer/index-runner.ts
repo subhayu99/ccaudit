@@ -7,6 +7,7 @@ import { newAggregator, finalizeAggregator } from "./aggregate.js";
 import { getSessionByFilePath, upsertSession, deleteSession } from "../db/sessions.js";
 import { deleteSessionMessages, insertMessages } from "../db/messages.js";
 import { resolveWorkdirs } from "./resolve-workdirs.js";
+import { inferSessionWorkdir } from "../lib/session-dirs.js";
 import { isExcludedPath, listExclusions } from "../db/exclusions.js";
 import { CLAUDE_PROJECTS_DIR, LOGS_DIR } from "../paths.js";
 import type { Session } from "../types.js";
@@ -111,6 +112,22 @@ export async function indexAll(
       continue;
     }
 
+    // Precompute the work-dir inference now, while every message is already in memory —
+    // so `list_mismatched_sessions` is a fast indexed query, never an on-demand transcript
+    // scan. The launch/filed anchor is the recorded cwd (exact), falling back to the
+    // decoded project dir. Best-effort: a detection error must never break indexing.
+    let inferredDir: string | null = null;
+    let inferredHits = 0;
+    let inferredLaunchHits = 0;
+    try {
+      const inf = inferSessionWorkdir(state.messages, { currentDir: state.cwd ?? e.projectDir });
+      inferredDir = inf.inferredDir;
+      inferredHits = inf.inferredHits;
+      inferredLaunchHits = inf.launchHits;
+    } catch {
+      /* leave defaults — session simply won't be flagged as misfiled */
+    }
+
     const session: Session = {
       id: e.sessionId,
       projectDir: e.projectDir,
@@ -129,6 +146,9 @@ export async function indexAll(
       cwd: state.cwd,
       indexedAt: Date.now(),
       tokenUsage: Object.keys(state.tokenUsage).length > 0 ? state.tokenUsage : null,
+      inferredDir,
+      inferredHits,
+      inferredLaunchHits,
     };
 
     // Append-only fast path: session logs only grow (a given line_no's content never changes),

@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   ai_title        TEXT,
   cwd             TEXT,
   token_usage     TEXT,
+  inferred_dir          TEXT,
+  inferred_hits         INTEGER NOT NULL DEFAULT 0,
+  inferred_launch_hits  INTEGER NOT NULL DEFAULT 0,
   indexed_at      INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_file_path     ON sessions(file_path);
@@ -265,6 +268,20 @@ export function openDb(path: string): Db {
   if (!cols.some((c) => c.name === "token_usage")) {
     db.exec("ALTER TABLE sessions ADD COLUMN token_usage TEXT");
   }
+  // Work-dir inference columns (misfiled-session detection). Added via ALTER for
+  // existing DBs; the index references inferred_dir so it must come AFTER the ALTER.
+  if (!cols.some((c) => c.name === "inferred_dir")) {
+    db.exec("ALTER TABLE sessions ADD COLUMN inferred_dir TEXT");
+  }
+  if (!cols.some((c) => c.name === "inferred_hits")) {
+    db.exec("ALTER TABLE sessions ADD COLUMN inferred_hits INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!cols.some((c) => c.name === "inferred_launch_hits")) {
+    db.exec("ALTER TABLE sessions ADD COLUMN inferred_launch_hits INTEGER NOT NULL DEFAULT 0");
+  }
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_sessions_inferred ON sessions(inferred_dir) WHERE inferred_dir IS NOT NULL"
+  );
   registerFunctions(db);
   return db;
 }

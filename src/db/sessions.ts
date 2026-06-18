@@ -19,6 +19,9 @@ type SessionRowSql = {
   ai_title: string | null;
   cwd: string | null;
   token_usage: string | null;
+  inferred_dir: string | null;
+  inferred_hits: number;
+  inferred_launch_hits: number;
   indexed_at: number;
 };
 
@@ -41,6 +44,9 @@ function rowToSession(r: SessionRowSql): Session {
     cwd: r.cwd,
     indexedAt: r.indexed_at,
     tokenUsage: parseTokenUsage(r.token_usage),
+    inferredDir: r.inferred_dir,
+    inferredHits: r.inferred_hits,
+    inferredLaunchHits: r.inferred_launch_hits,
   };
 }
 
@@ -54,11 +60,13 @@ export function upsertSession(db: Db, s: Session): void {
     `INSERT INTO sessions
        (id, project_dir, project_label, file_path, file_mtime, file_size,
         started_at, last_activity, git_branch, message_count, user_msg_count,
-        compact_count, first_prompt, ai_title, cwd, token_usage, indexed_at)
+        compact_count, first_prompt, ai_title, cwd, token_usage,
+        inferred_dir, inferred_hits, inferred_launch_hits, indexed_at)
      VALUES
        (@id, @projectDir, @projectLabel, @filePath, @fileMtime, @fileSize,
         @startedAt, @lastActivity, @gitBranch, @messageCount, @userMsgCount,
-        @compactCount, @firstPrompt, @aiTitle, @cwd, @tokenUsage, @indexedAt)
+        @compactCount, @firstPrompt, @aiTitle, @cwd, @tokenUsage,
+        @inferredDir, @inferredHits, @inferredLaunchHits, @indexedAt)
      ON CONFLICT(id) DO UPDATE SET
        project_dir   = excluded.project_dir,
        project_label = excluded.project_label,
@@ -75,8 +83,17 @@ export function upsertSession(db: Db, s: Session): void {
        ai_title      = COALESCE(excluded.ai_title, sessions.ai_title),
        cwd           = excluded.cwd,
        token_usage   = excluded.token_usage,
+       inferred_dir         = excluded.inferred_dir,
+       inferred_hits        = excluded.inferred_hits,
+       inferred_launch_hits = excluded.inferred_launch_hits,
        indexed_at    = excluded.indexed_at`
-  ).run({ ...s, tokenUsage: s.tokenUsage ? JSON.stringify(s.tokenUsage) : null });
+  ).run({
+    ...s,
+    tokenUsage: s.tokenUsage ? JSON.stringify(s.tokenUsage) : null,
+    inferredDir: s.inferredDir ?? null,
+    inferredHits: s.inferredHits ?? 0,
+    inferredLaunchHits: s.inferredLaunchHits ?? 0,
+  });
 }
 
 export function getSession(db: Db, id: string): Session | null {

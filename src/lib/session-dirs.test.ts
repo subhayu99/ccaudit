@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { candidateDirsFromMessages, suggestSessionHome, type DirKind } from "./session-dirs.js";
+import {
+  candidateDirsFromMessages,
+  suggestSessionHome,
+  inferSessionWorkdir,
+  type DirKind,
+} from "./session-dirs.js";
 
 const home = "/Users/me";
 // Synthetic filesystem: which absolute paths are dirs vs files vs missing.
@@ -88,5 +93,63 @@ describe("suggestSessionHome", () => {
     const s = suggestSessionHome(msgs, { resolve: fs, home, currentDir: "/Users/me/proj-a" });
     expect(s[0]!.dir).toBe("/Users/me/proj-b"); // not /proj-b/src or /proj-b/tests
     expect(s.map((x) => x.dir)).not.toContain("/Users/me/proj-a");
+  });
+});
+
+describe("inferSessionWorkdir", () => {
+  // Two git repos under $HOME; proj-a is the launch/filed dir, proj-b is where work happens.
+  const fs = (p: string): DirKind => {
+    const dirs = new Set([
+      "/Users/me/proj-a", "/Users/me/proj-b", "/Users/me/proj-b/src", "/Users/me/proj-b/tests",
+    ]);
+    const gits = new Set(["/Users/me/proj-a/.git", "/Users/me/proj-b/.git"]);
+    if (gits.has(p) || dirs.has(p)) return "dir";
+    if (p.endsWith(".ts") || p.endsWith(".json") || p.endsWith(".md")) return "file";
+    return "missing";
+  };
+  // Six references, all into proj-b — clears the default min-hits floor of 5.
+  const workInB = [
+    raw('{"file_path":"/Users/me/proj-b/src/app.ts"}'),
+    raw('{"file_path":"/Users/me/proj-b/src/db.ts"}'),
+    raw('{"file_path":"/Users/me/proj-b/tests/app.test.ts"}'),
+    raw("cd /Users/me/proj-b && npm test"),
+    raw('{"file_path":"/Users/me/proj-b/package.json"}'),
+    raw('{"file_path":"/Users/me/proj-b/README.md"}'),
+  ];
+
+  it("flags a misfiling: filed under proj-a, work lives in proj-b", () => {
+    const r = inferSessionWorkdir(workInB, { resolve: fs, home, currentDir: "/Users/me/proj-a" });
+    expect(r.mismatch).toBe(true);
+    expect(r.inferredDir).toBe("/Users/me/proj-b");
+    expect(r.launchRoot).toBe("/Users/me/proj-a");
+    expect(r.launchHits).toBe(0);
+    expect(r.inferredHits).toBeGreaterThanOrEqual(5);
+  });
+
+  it("reports no mismatch when the session is filed where the work happened", () => {
+    const r = inferSessionWorkdir(workInB, { resolve: fs, home, currentDir: "/Users/me/proj-b" });
+    expect(r.mismatch).toBe(false);
+    expect(r.inferredDir).toBeNull();
+    expect(r.launchHits).toBeGreaterThan(0);
+  });
+
+  it("does not flag on a couple of incidental cross-repo references (min-hits floor)", () => {
+    const few = [raw('{"file_path":"/Users/me/proj-b/src/app.ts"}')];
+    const r = inferSessionWorkdir(few, { resolve: fs, home, currentDir: "/Users/me/proj-a" });
+    expect(r.mismatch).toBe(false);
+    // ...but a caller can lower the floor to flag even a single dominant reference.
+    expect(inferSessionWorkdir(few, { resolve: fs, home, currentDir: "/Users/me/proj-a", minHits: 1 }).mismatch).toBe(true);
+  });
+
+  it("flags a session whose launch dir no longer exists on disk", () => {
+    const r = inferSessionWorkdir(workInB, { resolve: fs, home, currentDir: "/Users/me/proj-gone" });
+    expect(r.inferredDir).toBe("/Users/me/proj-b");
+    expect(r.mismatch).toBe(true);
+  });
+
+  it("returns no mismatch when the launch dir is unknown (cannot compare)", () => {
+    const r = inferSessionWorkdir(workInB, { resolve: fs, home, currentDir: null });
+    expect(r.mismatch).toBe(false);
+    expect(r.launchRoot).toBeNull();
   });
 });
