@@ -140,6 +140,10 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
               <a href={`/api/export?session=${session.id}&format=md&raw=1`} download class="dl-raw">Markdown (raw + tools)</a>
             </div>
           </details>
+          <details class="dl-menu mv-menu" id="mv-menu">
+            <summary class="title-mini" title="Move this session to the directory it actually worked in">⤚</summary>
+            <div class="dl-pop"><span class="dl-h">Move to…</span><div id="mv-body" class="mv-body"><span class="mv-sub">…</span></div></div>
+          </details>
         </div>
       </div>
       <div class="flex items-center gap-4 mt-3 text-[12.5px] flex-wrap" style="color:var(--text-dim);">
@@ -261,6 +265,14 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
   .dl-pop a { padding:6px 8px; border-radius:6px; font-size:13px; color:var(--text-dim); text-decoration:none; white-space:nowrap; }
   .dl-pop a:hover { background:var(--raise); color:var(--text); }
   .dl-pop a.dl-raw { color:var(--text-faint); font-size:12px; border-top:1px solid var(--border-soft); margin-top:3px; padding-top:7px; }
+  .mv-menu .dl-pop { min-width:230px; }
+  .dl-pop .mv-sub { font-size:11px; color:var(--text-faint); padding:2px 8px 5px; white-space:normal; }
+  .dl-pop .mv-item { text-align:left; background:none; border:none; cursor:pointer; padding:6px 8px; border-radius:6px; font-size:13px; color:var(--text-dim); white-space:nowrap; font-family:inherit; }
+  .dl-pop .mv-item:hover { background:var(--raise); color:var(--text); }
+  .dl-pop .mv-item small { color:var(--text-faint); }
+  .dl-pop .mv-manual { display:flex; gap:4px; padding:5px 8px 3px; border-top:1px solid var(--border-soft); margin-top:3px; }
+  .dl-pop .mv-manual input { flex:1; min-width:0; background:var(--canvas); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; padding:3px 6px; }
+  .dl-pop .mv-manual button { background:var(--amber); color:#241f17; border:none; border-radius:6px; font-size:12px; padding:0 8px; cursor:pointer; }
   .title-mini { display:inline-flex; align-items:center; justify-content:center; min-width:26px; height:26px; padding:0 6px;
     background:var(--raise); border:1px solid var(--border); border-radius:7px; color:var(--text-dim); cursor:pointer; font-size:13px; }
   .title-mini:hover { color:var(--text); border-color:var(--amber); }
@@ -451,5 +463,47 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
       } catch { /* leave title as-is on failure */ }
       aiBtn.dataset.busy = "";
     });
+  })();
+</script>
+
+<script is:inline>
+  // "Move to…" dropdown — re-home a misfiled session to where the work actually happened.
+  (function () {
+    const menu = document.getElementById("mv-menu");
+    const body = document.getElementById("mv-body");
+    const row = document.querySelector(".title-row");
+    if (!menu || !body || !row) return;
+    const sid = row.getAttribute("data-sid");
+    let loaded = false, consentGiven = false;
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+    async function doMove(dir, ack) {
+      try {
+        const res = await fetch("/api/move", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: sid, targetDir: dir, acknowledgeRisk: ack }) });
+        const j = await res.json().catch(() => ({}));
+        if (res.status === 409) { alert(j.error || "That session is running — close it in Claude Code first."); return; }
+        if (j.consentRequired) { if (confirm(j.disclosure + "\n\nProceed?")) doMove(dir, true); return; }
+        if (j.ok) { location.reload(); return; }
+        alert("Move failed: " + (j.error || ("HTTP " + res.status)));
+      } catch (e) { alert("Move failed: " + e.message); }
+    }
+
+    async function load() {
+      try {
+        const r = await fetch("/api/move?session=" + encodeURIComponent(sid));
+        const j = await r.json();
+        consentGiven = !!j.consentGiven;
+        if (j.running) { body.innerHTML = '<span class="mv-sub">This session is running — close it in Claude Code first.</span>'; return; }
+        let html = '<span class="mv-sub">Filed under <b>' + esc(j.currentDir || "unknown") + '</b>. Move to where the work happened:</span>';
+        (j.suggestions || []).forEach((s) => { html += '<button class="mv-item" data-dir="' + esc(s.dir) + '">' + esc(s.dir) + ' <small>(' + s.hits + ')</small></button>'; });
+        if (!(j.suggestions || []).length) html += '<span class="mv-sub">No suggestions found — type a path below.</span>';
+        html += '<div class="mv-manual"><input type="text" id="mv-path" placeholder="/absolute/path" /><button id="mv-go" type="button">Go</button></div>';
+        body.innerHTML = html;
+        body.querySelectorAll(".mv-item").forEach((b) => b.addEventListener("click", () => doMove(b.getAttribute("data-dir"), consentGiven)));
+        const go = body.querySelector("#mv-go"), inp = body.querySelector("#mv-path");
+        go.addEventListener("click", () => { const v = inp.value.trim(); if (v) doMove(v, consentGiven); });
+      } catch { body.innerHTML = '<span class="mv-sub">Couldn\'t load suggestions.</span>'; }
+    }
+    menu.addEventListener("toggle", () => { if (menu.open && !loaded) { loaded = true; load(); } });
   })();
 </script>
