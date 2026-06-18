@@ -4,6 +4,7 @@ import { listSessionsNeedingTitle, updateAiTitle, getSession } from "../../db/se
 import { nameSessions, type NameItem } from "../../labeling/name-sessions.js";
 import { buildNameContext } from "../../labeling/name-context.js";
 import { beginJob, endJob } from "../../lib/jobs.js";
+import { prioritizeRunning, runningIndexedSessionIds } from "../../lib/running-sessions.js";
 
 const json = (obj: unknown, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
@@ -12,8 +13,12 @@ const json = (obj: unknown, status = 200) =>
  * AI session titling. Same-origin JSON POST.
  *   { action: "smart" }       → title only sessions without one (never clobbers existing/edited titles)
  *   { action: "force" }       → regenerate titles for ALL sessions
+ *   { action: "running" }     → regenerate titles for the sessions running RIGHT NOW (they're the
+ *                               important ones, and often carry boilerplate titles smart-name skips)
  *   { action: "one", id }     → (re)title a single session with AI
  *   { action: "set", id, title } → manual rename (no AI), stored as the session's title
+ *
+ * smart/force title the currently-running sessions FIRST (prioritizeRunning).
  */
 export const POST: APIRoute = async ({ request }) => {
   let body: { action?: string; id?: string; title?: string };
@@ -45,7 +50,16 @@ export const POST: APIRoute = async ({ request }) => {
     } else if (action === "smart" || action === "force") {
       if (!beginJob("name")) return json({ error: "A renaming run is already in progress." }, 409);
       locked = true;
-      targets = listSessionsNeedingTitle(db, action === "force");
+      // Title the live sessions before the long tail of old ones.
+      targets = prioritizeRunning(listSessionsNeedingTitle(db, action === "force"), runningIndexedSessionIds(db));
+    } else if (action === "running") {
+      if (!beginJob("name")) return json({ error: "A renaming run is already in progress." }, 409);
+      locked = true;
+      // Regenerate titles for the sessions running right now (force, so boilerplate titles get fixed).
+      targets = runningIndexedSessionIds(db)
+        .map((id) => getSession(db, id))
+        .filter((s): s is NonNullable<typeof s> => !!s)
+        .map((s) => ({ id: s.id, firstPrompt: s.firstPrompt ?? null }));
     } else {
       return json({ error: "unknown action" }, 400);
     }

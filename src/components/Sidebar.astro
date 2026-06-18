@@ -63,7 +63,8 @@ const nameRunning = isJobRunning("name");
 
     <div class="px-2.5 pt-3 pb-1 rail-hide" id="title-tools">
       <span class="text-[10.5px] tracking-wider uppercase font-semibold" style="color:var(--text-faint);">Session titles</span>
-      <div class="flex items-center gap-2 mt-1.5">
+      <div class="flex flex-wrap items-center gap-2 gap-y-1.5 mt-1.5">
+        <button id="name-running" class="title-act" disabled={nameRunning} data-busy={nameRunning ? "1" : undefined} title="Generate fresh AI titles for the sessions running right now — the important ones (fixes boilerplate titles Smart-name skips)"><span class="ai-spin" aria-hidden="true"></span><span class="ai-lbl">{nameRunning ? "Naming…" : "◉ Name running"}</span></button>
         <button id="smart-name" class="title-act" disabled={nameRunning} data-busy={nameRunning ? "1" : undefined} title="Generate AI titles for sessions that don't have a good one yet"><span class="ai-spin" aria-hidden="true"></span><span class="ai-lbl">{nameRunning ? "✨ Naming…" : "✨ Smart-name"}</span></button>
         <button id="force-name" class="title-act" disabled={nameRunning} data-busy={nameRunning ? "1" : undefined} title="Regenerate AI titles for ALL sessions (overwrites existing — costs more)"><span class="ai-spin" aria-hidden="true"></span><span class="ai-lbl">{nameRunning ? "Naming…" : "Re-name all"}</span></button>
       </div>
@@ -296,6 +297,8 @@ const nameRunning = isJobRunning("name");
     e.preventDefault(); e.stopPropagation();
     runAiAction(e.currentTarget as HTMLButtonElement, { url: "/api/cluster", body: {}, workingLabel: "✨ Clustering…", note: "Clustering sessions into topics… ~1–3 min & a few cents — keep this tab open.", idleNote: "No new sessions to cluster.", noteEl: document.getElementById("cluster-note") });
   });
+  (document.getElementById("name-running") as HTMLButtonElement | null)?.addEventListener("click", (e) =>
+    runAiAction(e.currentTarget as HTMLButtonElement, { url: "/api/name", body: { action: "running" }, workingLabel: "Naming…", note: "Titling the sessions running right now… keep this tab open.", idleNote: "No running (indexed) sessions to name right now.", noteEl: document.getElementById("name-note") }));
   (document.getElementById("smart-name") as HTMLButtonElement | null)?.addEventListener("click", (e) =>
     runAiAction(e.currentTarget as HTMLButtonElement, { url: "/api/name", body: { action: "smart" }, workingLabel: "✨ Naming…", note: "Generating titles for untitled sessions… keep this tab open.", idleNote: "All sessions already have titles — use “Re-name all” to regenerate.", noteEl: document.getElementById("name-note") }));
   (document.getElementById("force-name") as HTMLButtonElement | null)?.addEventListener("click", (e) =>
@@ -393,7 +396,7 @@ const nameRunning = isJobRunning("name");
   // Reflect process-wide AI jobs live: mark buttons busy when a run starts (e.g. from another tab),
   // and reload when one finishes so this page shows the fresh titles/topics + re-enabled buttons.
   function syncJobs(jobs: string[]) {
-    ([["cluster", "cluster-topics", "✨ Clustering…"], ["name", "smart-name", "✨ Naming…"], ["name", "force-name", "Naming…"]] as const).forEach(([kind, id, working]) => {
+    ([["cluster", "cluster-topics", "✨ Clustering…"], ["name", "name-running", "Naming…"], ["name", "smart-name", "✨ Naming…"], ["name", "force-name", "Naming…"]] as const).forEach(([kind, id, working]) => {
       const btn = document.getElementById(id) as HTMLButtonElement | null;
       if (!btn) return;
       const running = jobs.indexOf(kind) !== -1;
