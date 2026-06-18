@@ -5,6 +5,8 @@ import { CONFIG_PATH } from "../paths.js";
 export type CcauditConfig = {
   /** Whether the user installed (or declined) the background session watcher. */
   watch?: "installed" | "declined";
+  /** One-time consent to re-home sessions (which writes/moves files in ~/.claude). */
+  rehomeConsent?: "accepted";
   [k: string]: unknown;
 };
 

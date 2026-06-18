@@ -13,6 +13,7 @@ import { liveCommand } from "./live.js";
 import { openCommand } from "./open.js";
 import { exportCommand } from "./export.js";
 import { startCommand, stopCommand, statusCommand } from "./daemon.js";
+import { moveCommand } from "./move.js";
 import { nativeBindingHelp } from "./native-error.js";
 import { version as pkgVersion } from "../../package.json";
 import { spawnSync } from "node:child_process";
@@ -123,6 +124,12 @@ program
   .description("Open the ccaudit UI in your browser — reuses a running instance (no re-index), else starts one")
   .option("--port <port>", "port to use if a new instance must be started")
   .action(openCommand);
+
+program
+  .command("move <sessionId> [targetDir]")
+  .description("Re-home a misfiled session to the dir it actually worked in (so `claude --resume` finds it). Backs up first; refuses running sessions. Asks consent once before touching ~/.claude.")
+  .option("--yes", "skip the one-time consent prompt (for scripts)")
+  .action(moveCommand);
 
 program
   .command("start")
