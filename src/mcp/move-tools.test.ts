@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { openDb, type Db } from "../db/init.js";
 import { upsertSession } from "../db/sessions.js";
 import { encodeProjectDir } from "../lib/rehome.js";
+import { addRule } from "../db/exclusions.js";
 import type { Session } from "../types.js";
 import { toolListMismatchedSessions, toolApplySessionMoves } from "./tools.js";
 
@@ -80,6 +81,22 @@ describe("toolListMismatchedSessions", () => {
     expect(out.sessions[0].inferredDir).toBe("/x/work-b");
     expect(out.sessions.find((s: any) => s.sessionId === "aaa").running).toBe(true);
     expect(out.sessions.find((s: any) => s.sessionId === "ccc")).toBeUndefined();
+  });
+
+  it("hides sessions matched by global exclusion filters, unless includeHidden", () => {
+    seed({ id: "keep", filedDir: "/x/parent", inferredDir: "/x/work", inferredHits: 30, inferredLaunchHits: 1 });
+    seed({ id: "drop", filedDir: "/x/parent", inferredDir: "/x/work", inferredHits: 20, inferredLaunchHits: 1 });
+    addRule(db, "session", "drop"); // the user discarded this session earlier
+
+    const def: any = toolListMismatchedSessions(db, {}, { runningIds: noRunning });
+    expect(def.count).toBe(1);
+    expect(def.sessions.map((s: any) => s.sessionId)).toEqual(["keep"]);
+    expect(def.hiddenCount).toBe(1);
+
+    const withHidden: any = toolListMismatchedSessions(db, { includeHidden: true }, { runningIds: noRunning });
+    expect(withHidden.count).toBe(2);
+    expect(withHidden.sessions.find((s: any) => s.sessionId === "drop").hidden).toBe(true);
+    expect(withHidden.sessions.find((s: any) => s.sessionId === "keep").hidden).toBe(false);
   });
 });
 

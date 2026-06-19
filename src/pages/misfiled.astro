@@ -13,9 +13,11 @@ const db = getDb();
 const tree = getLibraryTree(db, range);
 const topics = listTopics(db, range);
 
-const data = toolListMismatchedSessions(db, { limit: 1000 });
+const includeHidden = Astro.url.searchParams.get("hidden") === "1";
+const data = toolListMismatchedSessions(db, { limit: 1000, includeHidden });
 const rows = data.sessions;
-const movable = rows.filter((r) => !r.running).length;
+const movable = rows.filter((r) => !r.running && !r.hidden).length;
+const hiddenCount = data.hiddenCount;
 
 const short = (s: string) => s.slice(0, 8);
 const tilde = (p: string | null) => (p ? p.replace(/^\/Users\/[^/]+/, "~") : "‚Äî");
@@ -31,7 +33,17 @@ const tilde = (p: string | null) => (p ? p.replace(/^\/Users\/[^/]+/, "~") : "‚Ä
       The original session file is backed up first; <strong style="color:var(--text);">live sessions can't be moved</strong> until you close them.
     </p>
 
-    {rows.length === 0 && (
+    {hiddenCount > 0 && (
+      <div class="filter-line">
+        {includeHidden ? (
+          <span>Including <strong>{hiddenCount}</strong> session{hiddenCount === 1 ? "" : "s"} you've hidden. <a href="/misfiled">Hide them again</a></span>
+        ) : (
+          <span><strong>{hiddenCount}</strong> misfiled session{hiddenCount === 1 ? "" : "s"} {hiddenCount === 1 ? "is" : "are"} hidden by your filters (e.g. discarded dirs). <a href="/misfiled?hidden=1">Show them</a></span>
+        )}
+      </div>
+    )}
+
+    {rows.length === 0 && hiddenCount === 0 && (
       <div class="rounded-xl px-5 py-6 text-[13.5px]" style="background:var(--panel); border:1px solid var(--border-soft); color:var(--text-dim);">
         ‚úì Nothing misfiled ‚Äî every indexed session is filed in the directory it worked in.
         <div class="text-[12px] mt-1.5" style="color:var(--text-faint);">
@@ -64,12 +76,13 @@ const tilde = (p: string | null) => (p ? p.replace(/^\/Users\/[^/]+/, "~") : "‚Ä
 
         <div class="rounded-xl mt-1" style="background:var(--panel); border:1px solid var(--border-soft);">
           {rows.map((r) => (
-            <div class="row" data-running={r.running ? "1" : undefined}>
+            <div class="row" data-running={r.running ? "1" : undefined} data-hidden={r.hidden ? "1" : undefined}>
               <input type="checkbox" class="sel" data-id={r.sessionId} disabled={r.running} aria-label="Select session" />
               <div class="row-main">
                 <div class="row-top">
                   <a href={`/s/${r.sessionId}`} class="row-title">{r.title ?? short(r.sessionId)}</a>
                   {r.running && <span class="live-badge">‚óè LIVE</span>}
+                  {r.hidden && <span class="hidden-badge">hidden</span>}
                   <span class="evidence" title="path references pointing at the inferred dir vs. the current one">
                     {r.evidence.inferredHits} refs ‚Üí target ¬∑ {r.evidence.launchHits} here
                   </span>
@@ -100,6 +113,15 @@ const tilde = (p: string | null) => (p ? p.replace(/^\/Users\/[^/]+/, "~") : "‚Ä
     background: var(--canvas); color: var(--text-dim); border: 1px solid var(--border); }
   .ghost-btn:hover { color: var(--text); }
   .status { font-size: 12.5px; color: var(--text-faint); }
+
+  .filter-line { font-size: 12.5px; color: var(--text-faint); margin-bottom: 12px; }
+  .filter-line strong { color: var(--text-dim); font-weight: 600; }
+  .filter-line a { color: var(--amber-bright); text-decoration: none; }
+  .filter-line a:hover { text-decoration: underline; }
+
+  .hidden-badge { font-size: 10.5px; font-weight: 600; letter-spacing: .03em; padding: 1px 6px; border-radius: 5px;
+    color: var(--text-faint); background: var(--raise); border: 1px solid var(--border); }
+  .row[data-hidden] { opacity: .55; }
 
   .consent { border: 1px solid var(--amber); background: var(--raise); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
   .consent-title { font-size: 12.5px; font-weight: 600; color: var(--amber-bright); margin-bottom: 5px; }
@@ -158,17 +180,21 @@ const tilde = (p: string | null) => (p ? p.replace(/^\/Users\/[^/]+/, "~") : "‚Ä
   const resultEl = document.getElementById("result") as HTMLElement | null;
 
   if (moveBtn) {
-    const boxes = () => Array.from(document.querySelectorAll<HTMLInputElement>(".sel:not([disabled])"));
-    const checked = () => boxes().filter((b) => b.checked);
+    // "Select all" only grabs movable rows (not running, not hidden); hidden rows stay
+    // individually checkable so a discarded session can still be relocated on purpose.
+    const selectable = () => Array.from(document.querySelectorAll<HTMLInputElement>('.row:not([data-hidden]) .sel:not([disabled])'));
+    const enabled = () => Array.from(document.querySelectorAll<HTMLInputElement>(".sel:not([disabled])"));
+    const checked = () => enabled().filter((b) => b.checked);
 
     function refresh() {
       const n = checked().length;
       moveBtn!.textContent = `Move ${n} selected`;
       moveBtn!.disabled = n === 0;
-      if (selAll) selAll.checked = n > 0 && n === boxes().length;
+      const sa = selectable();
+      if (selAll) selAll.checked = sa.length > 0 && sa.every((b) => b.checked);
     }
 
-    selAll?.addEventListener("change", () => { boxes().forEach((b) => (b.checked = selAll.checked)); refresh(); });
+    selAll?.addEventListener("change", () => { selectable().forEach((b) => (b.checked = selAll.checked)); refresh(); });
     document.querySelectorAll<HTMLInputElement>(".sel").forEach((b) => b.addEventListener("change", refresh));
 
     function gather() {

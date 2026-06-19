@@ -15,6 +15,7 @@ import { clampLimit } from "../cli/limit.js";
 import { readLiveRegistry } from "../watch/registry.js";
 import { getBootTime } from "../lib/boot-time.js";
 import { readConfig, writeConfig } from "../lib/config.js";
+import { sessionKeepCondition } from "../db/exclusions.js";
 import { REHOME_DISCLOSURE, applyRehomeToDb, type ApplyRehomeOpts } from "../lib/rehome-apply.js";
 
 export function toolListSessions(
@@ -144,38 +145,62 @@ type MismatchedRow = {
  */
 export function toolListMismatchedSessions(
   db: Db,
-  args: { limit?: number } = {},
+  args: { limit?: number; includeHidden?: boolean } = {},
   deps: { runningIds?: RunningIdsFn } = {}
 ) {
   const limit = clampLimit(args.limit, 50);
+  const includeHidden = !!args.includeHidden;
   const running = (deps.runningIds ?? defaultRunningIds)();
-  const rows = db
+
+  // The misfiled set is a small subset, so fetch it all (ordered) and slice after filtering.
+  const all = db
     .prepare(
       `SELECT id, project_label, project_dir, cwd, inferred_dir,
               inferred_hits, inferred_launch_hits, ai_title, first_prompt
          FROM sessions
         WHERE inferred_dir IS NOT NULL
-        ORDER BY (inferred_hits - inferred_launch_hits) DESC, inferred_hits DESC
-        LIMIT ?`
+        ORDER BY (inferred_hits - inferred_launch_hits) DESC, inferred_hits DESC`
     )
-    .all(limit) as MismatchedRow[];
+    .all() as MismatchedRow[];
 
-  const sessions = rows.map((r) => ({
+  // Honor the same global hide-filters as every other view (excluded dirs + session/phrase/regex
+  // rules), so sessions the user has discarded — e.g. ~/.claude-mem observer sessions — don't
+  // reappear here. `keptIds` is the set that survives the filter; everything else is "hidden".
+  const keep = sessionKeepCondition(db);
+  const keptIds =
+    keep.sql === "1"
+      ? null
+      : new Set(
+          (
+            db
+              .prepare(`SELECT id FROM sessions WHERE inferred_dir IS NOT NULL AND (${keep.sql})`)
+              .all(keep.params) as Array<{ id: string }>
+          ).map((r) => r.id)
+        );
+
+  const marked = all.map((r) => ({ r, hidden: keptIds ? !keptIds.has(r.id) : false }));
+  const hiddenCount = marked.filter((m) => m.hidden).length;
+  const chosen = (includeHidden ? marked : marked.filter((m) => !m.hidden)).slice(0, limit);
+
+  const sessions = chosen.map(({ r, hidden }) => ({
     sessionId: r.id,
     title: r.ai_title ?? (r.first_prompt ? r.first_prompt.slice(0, 80) : null),
     filedUnder: r.cwd ?? r.project_dir,
     inferredDir: r.inferred_dir,
     evidence: { inferredHits: r.inferred_hits, launchHits: r.inferred_launch_hits },
     running: running.has(r.id),
+    hidden,
   }));
 
   return {
     count: sessions.length,
+    hiddenCount,
     consentGiven: readConfig().rehomeConsent === "accepted",
     note:
       "Sessions whose work mostly happened in a directory other than where they're filed. " +
-      "Re-home them by calling apply_session_moves with the chosen { sessionId, targetDir } pairs " +
-      "(confirm each target with the user first). Sessions flagged running can't be moved until closed.",
+      "Sessions you've hidden (excluded dirs / rules) are filtered out by default — pass " +
+      "includeHidden:true to include them. Re-home with apply_session_moves using the chosen " +
+      "{ sessionId, targetDir } pairs (confirm each target first). Running ones can't move until closed.",
     sessions,
   };
 }

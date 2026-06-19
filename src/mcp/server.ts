@@ -91,8 +91,9 @@ export async function startMcpServer(): Promise<void> {
         "actually happened in another (e.g. Claude was opened in a parent folder, then asked to " +
         "build in a subfolder, so `claude --resume` can't find the session from the real dir). " +
         "Returns each session's inferred correct directory, the supporting path-reference evidence, " +
-        "and a `running` flag. Feed the chosen { sessionId, targetDir } pairs to apply_session_moves.",
-      inputSchema: { limit: z.number().optional() },
+        "and a `running` flag. Feed the chosen { sessionId, targetDir } pairs to apply_session_moves. " +
+        "Sessions the user has hidden (excluded dirs/rules) are filtered out unless includeHidden is true.",
+      inputSchema: { limit: z.number().optional(), includeHidden: z.boolean().optional() },
     },
     async (args) => json(toolListMismatchedSessions(db, args))
   );

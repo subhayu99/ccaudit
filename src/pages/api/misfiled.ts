@@ -5,8 +5,9 @@ import { toolListMismatchedSessions, toolApplySessionMoves } from "../../mcp/too
 const json = (obj: unknown, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
 
-/** GET /api/misfiled → the list of misfiled sessions (same source the MCP list tool uses). */
-export const GET: APIRoute = () => json(toolListMismatchedSessions(getDb(), { limit: 1000 }));
+/** GET /api/misfiled[?hidden=1] → misfiled sessions (same source the MCP list tool uses). */
+export const GET: APIRoute = ({ url }) =>
+  json(toolListMismatchedSessions(getDb(), { limit: 1000, includeHidden: url.searchParams.get("hidden") === "1" }));
 
 /**
  * POST /api/misfiled { moves: [{ sessionId, targetDir }], acknowledgeRisk? }
