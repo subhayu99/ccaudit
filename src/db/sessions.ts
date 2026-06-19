@@ -61,12 +61,12 @@ export function upsertSession(db: Db, s: Session): void {
        (id, project_dir, project_label, file_path, file_mtime, file_size,
         started_at, last_activity, git_branch, message_count, user_msg_count,
         compact_count, first_prompt, ai_title, cwd, token_usage,
-        inferred_dir, inferred_hits, inferred_launch_hits, indexed_at)
+        inferred_dir, inferred_hits, inferred_launch_hits, inferred_at, indexed_at)
      VALUES
        (@id, @projectDir, @projectLabel, @filePath, @fileMtime, @fileSize,
         @startedAt, @lastActivity, @gitBranch, @messageCount, @userMsgCount,
         @compactCount, @firstPrompt, @aiTitle, @cwd, @tokenUsage,
-        @inferredDir, @inferredHits, @inferredLaunchHits, @indexedAt)
+        @inferredDir, @inferredHits, @inferredLaunchHits, @indexedAt, @indexedAt)
      ON CONFLICT(id) DO UPDATE SET
        project_dir   = excluded.project_dir,
        project_label = excluded.project_label,
@@ -86,6 +86,7 @@ export function upsertSession(db: Db, s: Session): void {
        inferred_dir         = excluded.inferred_dir,
        inferred_hits        = excluded.inferred_hits,
        inferred_launch_hits = excluded.inferred_launch_hits,
+       inferred_at          = excluded.inferred_at,
        indexed_at    = excluded.indexed_at`
   ).run({
     ...s,

@@ -17,7 +17,9 @@ export async function reindexCommand(opts: { force?: boolean }): Promise<void> {
     const ms = Date.now() - start;
     console.log(
       `Reindex complete in ${ms}ms — indexed ${stats.sessionsIndexed} session(s), ` +
-        `skipped ${stats.sessionsSkipped}, malformed lines: ${stats.malformedLines}, errors: ${stats.errors}.`
+        `skipped ${stats.sessionsSkipped}, malformed lines: ${stats.malformedLines}, errors: ${stats.errors}` +
+        (stats.inferenceBackfilled ? `, work-dir inference back-filled for ${stats.inferenceBackfilled}` : "") +
+        `.`
     );
   } finally {
     db.close();

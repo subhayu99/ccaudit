@@ -8,6 +8,7 @@ import { getSessionByFilePath, upsertSession, deleteSession } from "../db/sessio
 import { deleteSessionMessages, insertMessages } from "../db/messages.js";
 import { resolveWorkdirs } from "./resolve-workdirs.js";
 import { inferSessionWorkdir } from "../lib/session-dirs.js";
+import { backfillInference } from "./backfill-inference.js";
 import { isExcludedPath, listExclusions } from "../db/exclusions.js";
 import { CLAUDE_PROJECTS_DIR, LOGS_DIR } from "../paths.js";
 import type { Session } from "../types.js";
@@ -17,7 +18,8 @@ import type { Session } from "../types.js";
 export type IndexProgress =
   | { phase: "scan"; total: number }
   | { phase: "index"; current: number; total: number; label: string }
-  | { phase: "resolve" };
+  | { phase: "resolve" }
+  | { phase: "infer"; current: number; total: number };
 
 export type IndexRunOptions = {
   baseDir?: string;        // default: ~/.claude/projects
@@ -32,6 +34,7 @@ export type IndexRunStats = {
   malformedLines: number;
   errors: number;
   workdirsResolved: number;
+  inferenceBackfilled: number;
 };
 
 function logIndexError(line: string): void {
@@ -50,7 +53,7 @@ export async function indexAll(
   const baseDir = opts.baseDir ?? CLAUDE_PROJECTS_DIR;
   const stats: IndexRunStats = {
     filesSeen: 0, sessionsIndexed: 0, sessionsSkipped: 0,
-    malformedLines: 0, errors: 0, workdirsResolved: 0,
+    malformedLines: 0, errors: 0, workdirsResolved: 0, inferenceBackfilled: 0,
   };
   const entries = walkProjects(baseDir);
   opts.onProgress?.({ phase: "scan", total: entries.length });
@@ -171,6 +174,13 @@ export async function indexAll(
   // captured workdirs unless forced).
   opts.onProgress?.({ phase: "resolve" });
   stats.workdirsResolved = resolveWorkdirs(db, { force: opts.force });
+
+  // Back-fill work-dir inference for any session indexed before inference existed (or skipped as
+  // unchanged), reading messages from the DB — so the Misfiled view is complete without a manual
+  // `reindex --force`. One-time per session; steady-state this is a no-op.
+  stats.inferenceBackfilled = backfillInference(db, {
+    onProgress: (current, total) => opts.onProgress?.({ phase: "infer", current, total }),
+  });
 
   return stats;
 }

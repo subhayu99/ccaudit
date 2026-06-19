@@ -28,12 +28,13 @@ export function createIndexReporter(): IndexReporter {
   const label = () =>
     phase === "scan" ? "Scanning ~/.claude/projects"
     : phase === "resolve" ? "Resolving repositories"
+    : phase === "infer" ? "Computing work-dir signals"
     : VERBS[verb]!;
 
   const render = () => {
     frame = (frame + 1) % FRAMES.length;
     if (++ticks % 16 === 0) verb = (verb + 1) % VERBS.length; // rotate the verb ~every 1.3s
-    const count = phase === "index" && total ? kleur.dim(`  ${current.toLocaleString()} / ${total.toLocaleString()}`) : "";
+    const count = (phase === "index" || phase === "infer") && total ? kleur.dim(`  ${current.toLocaleString()} / ${total.toLocaleString()}`) : "";
     process.stderr.write(`\r\x1b[2K${kleur.yellow(FRAMES[frame]!)} ${kleur.dim(label() + "…")}${count}`);
   };
 
@@ -48,6 +49,9 @@ export function createIndexReporter(): IndexReporter {
       if (!tty && current - loggedAt >= 200) { loggedAt = current; process.stderr.write(kleur.dim(`  ${current} / ${total}…\n`)); }
     } else if (p.phase === "resolve") {
       if (!tty) process.stderr.write(kleur.dim(`  resolving repositories…\n`));
+    } else if (p.phase === "infer") {
+      current = p.current; total = p.total;
+      if (!tty && current - loggedAt >= 200) { loggedAt = current; process.stderr.write(kleur.dim(`  computing work-dir signals ${current} / ${total}…\n`)); }
     }
   };
 

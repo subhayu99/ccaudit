@@ -103,6 +103,7 @@ export async function serveCommand(opts: { port?: string; open?: boolean; watch?
       const parts = [`Indexed ${stats.sessionsIndexed.toLocaleString()} session${stats.sessionsIndexed === 1 ? "" : "s"}`];
       if (stats.sessionsSkipped) parts.push(`${stats.sessionsSkipped.toLocaleString()} unchanged`);
       if (stats.workdirsResolved) parts.push(`${stats.workdirsResolved} repositor${stats.workdirsResolved === 1 ? "y" : "ies"}`);
+      if (stats.inferenceBackfilled) parts.push(`${stats.inferenceBackfilled.toLocaleString()} scanned for misfiling`);
       reporter.done(`${parts.join(" · ")} · ${secs}s`);
     }
   } finally {

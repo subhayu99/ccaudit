@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   inferred_dir          TEXT,
   inferred_hits         INTEGER NOT NULL DEFAULT 0,
   inferred_launch_hits  INTEGER NOT NULL DEFAULT 0,
+  inferred_at           INTEGER,
   indexed_at      INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_file_path     ON sessions(file_path);
@@ -278,6 +279,12 @@ export function openDb(path: string): Db {
   }
   if (!cols.some((c) => c.name === "inferred_launch_hits")) {
     db.exec("ALTER TABLE sessions ADD COLUMN inferred_launch_hits INTEGER NOT NULL DEFAULT 0");
+  }
+  // `inferred_at` marks that work-dir inference has been computed for a row (NULL = never).
+  // On first add, mark rows that already have inference evidence so the backfill skips them.
+  if (!cols.some((c) => c.name === "inferred_at")) {
+    db.exec("ALTER TABLE sessions ADD COLUMN inferred_at INTEGER");
+    db.exec("UPDATE sessions SET inferred_at = indexed_at WHERE inferred_dir IS NOT NULL OR inferred_launch_hits > 0");
   }
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_sessions_inferred ON sessions(inferred_dir) WHERE inferred_dir IS NOT NULL"
