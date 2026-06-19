@@ -16,6 +16,7 @@ import { readLiveRegistry } from "../watch/registry.js";
 import { getBootTime } from "../lib/boot-time.js";
 import { readConfig, writeConfig } from "../lib/config.js";
 import { sessionKeepCondition } from "../db/exclusions.js";
+import { isProjectRoot, MISMATCH_DOMINANCE } from "../lib/session-dirs.js";
 import { REHOME_DISCLOSURE, applyRehomeToDb, type ApplyRehomeOpts } from "../lib/rehome-apply.js";
 
 export function toolListSessions(
@@ -146,19 +147,23 @@ type MismatchedRow = {
 export function toolListMismatchedSessions(
   db: Db,
   args: { limit?: number; includeHidden?: boolean } = {},
-  deps: { runningIds?: RunningIdsFn } = {}
+  deps: { runningIds?: RunningIdsFn; isProjectRoot?: (dir: string) => boolean } = {}
 ) {
   const limit = clampLimit(args.limit, 50);
   const includeHidden = !!args.includeHidden;
   const running = (deps.runningIds ?? defaultRunningIds)();
+  const isProj = deps.isProjectRoot ?? ((dir: string) => isProjectRoot(dir));
 
-  // The misfiled set is a small subset, so fetch it all (ordered) and slice after filtering.
+  // Confidence gate (mirrors inferSessionWorkdir): the inferred dir must out-reference the filed
+  // dir by ≥MISMATCH_DOMINANCE×. Applied here too so already-indexed rows (computed under an older,
+  // looser rule) are corrected without a full re-index. The misfiled set is small — fetch & slice.
   const all = db
     .prepare(
       `SELECT id, project_label, project_dir, cwd, inferred_dir,
               inferred_hits, inferred_launch_hits, ai_title, first_prompt
          FROM sessions
         WHERE inferred_dir IS NOT NULL
+          AND inferred_hits >= inferred_launch_hits * ${MISMATCH_DOMINANCE}
         ORDER BY (inferred_hits - inferred_launch_hits) DESC, inferred_hits DESC`
     )
     .all() as MismatchedRow[];
@@ -173,14 +178,20 @@ export function toolListMismatchedSessions(
       : new Set(
           (
             db
-              .prepare(`SELECT id FROM sessions WHERE inferred_dir IS NOT NULL AND (${keep.sql})`)
+              .prepare(
+                `SELECT id FROM sessions WHERE inferred_dir IS NOT NULL
+                   AND inferred_hits >= inferred_launch_hits * ${MISMATCH_DOMINANCE} AND (${keep.sql})`
+              )
               .all(keep.params) as Array<{ id: string }>
           ).map((r) => r.id)
         );
 
   const marked = all.map((r) => ({ r, hidden: keptIds ? !keptIds.has(r.id) : false }));
   const hiddenCount = marked.filter((m) => m.hidden).length;
-  const chosen = (includeHidden ? marked : marked.filter((m) => !m.hidden)).slice(0, limit);
+  // Only surface rows whose inferred target is a real, resumable project — drop generic-container
+  // targets like ~/Downloads. fs-check only the pool we'll actually show (cheap in the default view).
+  const pool = includeHidden ? marked : marked.filter((m) => !m.hidden);
+  const chosen = pool.filter((m) => isProj(m.r.inferred_dir)).slice(0, limit);
 
   const sessions = chosen.map(({ r, hidden }) => ({
     sessionId: r.id,

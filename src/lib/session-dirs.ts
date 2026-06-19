@@ -160,6 +160,20 @@ export function suggestSessionHome(
 /** Hit floor below which a dominant other-root is treated as incidental noise, not a misfiling. */
 export const MISMATCH_MIN_HITS = 5;
 
+/** The inferred dir must out-reference the filed dir by at least this factor to count as misfiled
+ *  (so a 14-vs-12 tie doesn't flag — only a dir the session clearly worked in instead). */
+export const MISMATCH_DOMINANCE = 2;
+
+function hasProjectMarker(dir: string, resolve: (p: string) => DirKind): boolean {
+  return resolve(dir + "/.git") !== "missing" || resolve(dir + "/package.json") === "file";
+}
+
+/** True if `dir` is a resumable project root (holds `.git` or `package.json`) — i.e. a place
+ *  `claude --resume` is actually useful, not a generic container like ~/Downloads or ~/Documents. */
+export function isProjectRoot(dir: string, opts: { resolve?: (p: string) => DirKind } = {}): boolean {
+  return hasProjectMarker(dir, opts.resolve ?? realResolve);
+}
+
 export type WorkdirInference = {
   /** Project root of the launch/filed dir (where the session currently lives). */
   launchRoot: string | null;
@@ -186,12 +200,20 @@ export function inferSessionWorkdir(
   opts: DirOpts & { minHits?: number } = {}
 ): WorkdirInference {
   const minHits = opts.minHits ?? MISMATCH_MIN_HITS;
+  const resolve = opts.resolve ?? realResolve;
   const { roots, launchRoot } = rollupToRoots(messages, opts);
   const launchHits = roots.find((r) => r.dir === launchRoot)?.hits ?? 0;
   const best = roots.find((r) => r.dir !== launchRoot) ?? null; // roots is sorted → first non-launch wins
   const bestHits = best?.hits ?? 0;
+  // A genuine misfiling: a DIFFERENT resumable project that the session references clearly more
+  // than where it's filed — past the noise floor, dominating by ≥2×, and an actual project root
+  // (not a generic container dir). Anything weaker is incidental cross-repo chatter, not a move.
   const mismatch =
-    launchRoot !== null && best !== null && bestHits > launchHits && bestHits >= minHits;
+    launchRoot !== null &&
+    best !== null &&
+    bestHits >= minHits &&
+    bestHits >= launchHits * MISMATCH_DOMINANCE &&
+    hasProjectMarker(best.dir, resolve);
   return {
     launchRoot,
     launchHits,

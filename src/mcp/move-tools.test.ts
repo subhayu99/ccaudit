@@ -74,7 +74,7 @@ describe("toolListMismatchedSessions", () => {
     seed({ id: "bbb", filedDir: "/x/parent", inferredDir: "/x/work-b", inferredHits: 100, inferredLaunchHits: 1 });
     seed({ id: "ccc", filedDir: "/x/ok" }); // filed correctly → inferred_dir NULL → not listed
 
-    const out: any = toolListMismatchedSessions(db, {}, { runningIds: () => new Set(["aaa"]) });
+    const out: any = toolListMismatchedSessions(db, {}, { runningIds: () => new Set(["aaa"]), isProjectRoot: () => true });
 
     expect(out.count).toBe(2);
     expect(out.sessions[0].sessionId).toBe("bbb"); // (100-1) margin beats (20-2)
@@ -88,12 +88,12 @@ describe("toolListMismatchedSessions", () => {
     seed({ id: "drop", filedDir: "/x/parent", inferredDir: "/x/work", inferredHits: 20, inferredLaunchHits: 1 });
     addRule(db, "session", "drop"); // the user discarded this session earlier
 
-    const def: any = toolListMismatchedSessions(db, {}, { runningIds: noRunning });
+    const def: any = toolListMismatchedSessions(db, {}, { runningIds: noRunning, isProjectRoot: () => true });
     expect(def.count).toBe(1);
     expect(def.sessions.map((s: any) => s.sessionId)).toEqual(["keep"]);
     expect(def.hiddenCount).toBe(1);
 
-    const withHidden: any = toolListMismatchedSessions(db, { includeHidden: true }, { runningIds: noRunning });
+    const withHidden: any = toolListMismatchedSessions(db, { includeHidden: true }, { runningIds: noRunning, isProjectRoot: () => true });
     expect(withHidden.count).toBe(2);
     expect(withHidden.sessions.find((s: any) => s.sessionId === "drop").hidden).toBe(true);
     expect(withHidden.sessions.find((s: any) => s.sessionId === "keep").hidden).toBe(false);

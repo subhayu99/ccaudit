@@ -152,4 +152,27 @@ describe("inferSessionWorkdir", () => {
     expect(r.mismatch).toBe(false);
     expect(r.launchRoot).toBeNull();
   });
+
+  it("does not flag when the inferred dir only marginally out-references the filed dir (needs 2x)", () => {
+    const msgs = [
+      ...Array(10).fill('{"file_path":"/Users/me/proj-a/a.ts"}').map(raw),
+      ...Array(12).fill('{"file_path":"/Users/me/proj-b/b.ts"}').map(raw),
+    ];
+    const r = inferSessionWorkdir(msgs, { resolve: fs, home, currentDir: "/Users/me/proj-a" });
+    expect(r.launchHits).toBe(10);
+    expect(r.mismatch).toBe(false); // proj-b 12 vs proj-a 10 is only 1.2× — below the 2× bar
+  });
+
+  it("does not flag when the dominant other dir is not a real project (no .git/package.json)", () => {
+    const plainFs = (p: string): DirKind => {
+      if (p === "/Users/me/proj-a/.git") return "dir";
+      if (p === "/Users/me/proj-a" || p === "/Users/me/scratch") return "dir";
+      if (p.endsWith(".ts")) return "file";
+      return "missing"; // /Users/me/scratch holds no .git or package.json
+    };
+    const msgs = Array(8).fill('{"file_path":"/Users/me/scratch/x.ts"}').map(raw);
+    const r = inferSessionWorkdir(msgs, { resolve: plainFs, home, currentDir: "/Users/me/proj-a" });
+    expect(r.inferredDir).toBeNull();
+    expect(r.mismatch).toBe(false); // scratch referenced 8× but it's not a resumable project
+  });
 });
