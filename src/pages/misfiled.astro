@@ -1,0 +1,216 @@
+---
+import AppShell from "../layouts/AppShell.astro";
+import Sidebar from "../components/Sidebar.astro";
+import { getDb } from "../db/init";
+import { getLibraryTree } from "../db/library";
+import { listTopics } from "../db/topics";
+import { resolveRange } from "../db/date-range";
+import { toolListMismatchedSessions } from "../mcp/tools";
+
+const now = Date.now();
+const range = resolveRange(Astro.cookies.get("ccaudit-range")?.value, now);
+const db = getDb();
+const tree = getLibraryTree(db, range);
+const topics = listTopics(db, range);
+
+const data = toolListMismatchedSessions(db, { limit: 1000 });
+const rows = data.sessions;
+const movable = rows.filter((r) => !r.running).length;
+
+const short = (s: string) => s.slice(0, 8);
+const tilde = (p: string | null) => (p ? p.replace(/^\/Users\/[^/]+/, "~") : "—");
+---
+<AppShell title="ccaudit — misfiled">
+  <Sidebar slot="sidebar" tree={tree} topics={topics} />
+  <div slot="reader" class="p-8 max-w-[1100px]">
+    <h1 class="font-serif text-2xl font-semibold mb-1" style="color:var(--text);">Misfiled sessions</h1>
+    <p class="text-[13px] mb-5 max-w-[760px]" style="color:var(--text-dim);">
+      Sessions launched in one directory whose work actually happened in another — so
+      <code class="font-mono-w">claude --resume</code> can't find them from the real project dir, and they
+      clutter the wrong folder here. Pick a target (pre-filled with the inferred one), select, and move.
+      The original session file is backed up first; <strong style="color:var(--text);">live sessions can't be moved</strong> until you close them.
+    </p>
+
+    {rows.length === 0 && (
+      <div class="rounded-xl px-5 py-6 text-[13.5px]" style="background:var(--panel); border:1px solid var(--border-soft); color:var(--text-dim);">
+        ✓ Nothing misfiled — every indexed session is filed in the directory it worked in.
+        <div class="text-[12px] mt-1.5" style="color:var(--text-faint);">
+          (New sessions are checked as they're indexed. If you just upgraded, run <code class="font-mono-w">ccaudit reindex --force</code> once to scan existing ones.)
+        </div>
+      </div>
+    )}
+
+    {rows.length > 0 && (
+      <>
+        <div class="toolbar">
+          <label class="selall">
+            <input type="checkbox" id="select-all" disabled={movable === 0} />
+            Select all movable <span style="color:var(--text-faint);">({movable})</span>
+          </label>
+          <button id="move-btn" class="move-btn" disabled>Move 0 selected</button>
+          <span id="move-status" class="status"></span>
+        </div>
+
+        <div id="consent" class="consent" hidden>
+          <div class="consent-title">One-time confirmation</div>
+          <div class="consent-text" id="consent-text"></div>
+          <div class="consent-actions">
+            <button id="consent-proceed" class="move-btn">I understand — move them</button>
+            <button id="consent-cancel" class="ghost-btn">Cancel</button>
+          </div>
+        </div>
+
+        <div id="result" class="result" hidden></div>
+
+        <div class="rounded-xl mt-1" style="background:var(--panel); border:1px solid var(--border-soft);">
+          {rows.map((r) => (
+            <div class="row" data-running={r.running ? "1" : undefined}>
+              <input type="checkbox" class="sel" data-id={r.sessionId} disabled={r.running} aria-label="Select session" />
+              <div class="row-main">
+                <div class="row-top">
+                  <a href={`/s/${r.sessionId}`} class="row-title">{r.title ?? short(r.sessionId)}</a>
+                  {r.running && <span class="live-badge">● LIVE</span>}
+                  <span class="evidence" title="path references pointing at the inferred dir vs. the current one">
+                    {r.evidence.inferredHits} refs → target · {r.evidence.launchHits} here
+                  </span>
+                </div>
+                <div class="row-paths">
+                  <span class="filed" title={r.filedUnder ?? ""}>{tilde(r.filedUnder)}</span>
+                  <span class="arrow">→</span>
+                  <input class="tgt" data-id={r.sessionId} value={r.inferredDir} disabled={r.running} spellcheck="false" />
+                </div>
+                {r.running && <div class="row-note">Close this session in Claude Code to move it.</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </>
+    )}
+  </div>
+</AppShell>
+
+<style>
+  .toolbar { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+  .selall { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text-dim); cursor: pointer; }
+  .move-btn { font-size: 13px; padding: 5px 13px; border-radius: 7px; cursor: pointer; font-weight: 500;
+    background: var(--amber); color: #1a1410; border: 1px solid var(--amber); }
+  .move-btn:hover:not(:disabled) { filter: brightness(1.08); }
+  .move-btn:disabled { opacity: .45; cursor: default; }
+  .ghost-btn { font-size: 13px; padding: 5px 11px; border-radius: 7px; cursor: pointer;
+    background: var(--canvas); color: var(--text-dim); border: 1px solid var(--border); }
+  .ghost-btn:hover { color: var(--text); }
+  .status { font-size: 12.5px; color: var(--text-faint); }
+
+  .consent { border: 1px solid var(--amber); background: var(--raise); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+  .consent-title { font-size: 12.5px; font-weight: 600; color: var(--amber-bright); margin-bottom: 5px; }
+  .consent-text { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; margin-bottom: 10px; }
+  .consent-actions { display: flex; gap: 8px; }
+
+  .result { border: 1px solid var(--border-soft); background: var(--panel); border-radius: 10px;
+    padding: 11px 14px; margin-bottom: 14px; font-size: 13px; color: var(--text); white-space: pre-wrap; }
+
+  .row { display: flex; gap: 11px; align-items: flex-start; padding: 11px 14px; border-bottom: 1px solid var(--border-soft); }
+  .row:last-child { border-bottom: none; }
+  .row[data-running] { opacity: .62; }
+  .row .sel { margin-top: 3px; cursor: pointer; }
+  .row[data-running] .sel { cursor: not-allowed; }
+  .row-main { min-width: 0; flex: 1; }
+  .row-top { display: flex; align-items: center; gap: 9px; min-width: 0; }
+  .row-title { font-weight: 500; color: var(--text); text-decoration: none; max-width: 460px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row-title:hover { color: var(--amber-bright); }
+  .live-badge { font-size: 10.5px; font-weight: 600; letter-spacing: .03em; padding: 1px 6px; border-radius: 5px;
+    color: var(--c-green); background: color-mix(in srgb, var(--c-green) 16%, transparent); border: 1px solid color-mix(in srgb, var(--c-green) 40%, transparent); }
+  .evidence { margin-left: auto; font-size: 11px; color: var(--text-faint); white-space: nowrap; }
+  .row-paths { display: flex; align-items: center; gap: 8px; margin-top: 5px; min-width: 0; }
+  .filed { font-size: 12px; font-family: var(--font-mono, monospace); color: var(--text-dim); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .arrow { color: var(--text-faint); }
+  .tgt { flex: 1; min-width: 0; font-size: 12px; font-family: var(--font-mono, monospace); padding: 3px 8px;
+    border-radius: 6px; background: var(--canvas); color: var(--text); border: 1px solid var(--border); }
+  .tgt:focus { outline: none; border-color: var(--amber); }
+  .tgt:disabled { opacity: .6; }
+  .row-note { font-size: 11px; color: var(--text-faint); margin-top: 4px; }
+</style>
+
+<script>
+  const selAll = document.getElementById("select-all") as HTMLInputElement | null;
+  const moveBtn = document.getElementById("move-btn") as HTMLButtonElement | null;
+  const statusEl = document.getElementById("move-status") as HTMLElement | null;
+  const consent = document.getElementById("consent") as HTMLElement | null;
+  const consentText = document.getElementById("consent-text") as HTMLElement | null;
+  const consentProceed = document.getElementById("consent-proceed") as HTMLButtonElement | null;
+  const consentCancel = document.getElementById("consent-cancel") as HTMLButtonElement | null;
+  const resultEl = document.getElementById("result") as HTMLElement | null;
+
+  if (moveBtn) {
+    const boxes = () => Array.from(document.querySelectorAll<HTMLInputElement>(".sel:not([disabled])"));
+    const checked = () => boxes().filter((b) => b.checked);
+
+    function refresh() {
+      const n = checked().length;
+      moveBtn!.textContent = `Move ${n} selected`;
+      moveBtn!.disabled = n === 0;
+      if (selAll) selAll.checked = n > 0 && n === boxes().length;
+    }
+
+    selAll?.addEventListener("change", () => { boxes().forEach((b) => (b.checked = selAll.checked)); refresh(); });
+    document.querySelectorAll<HTMLInputElement>(".sel").forEach((b) => b.addEventListener("change", refresh));
+
+    function gather() {
+      return checked()
+        .map((b) => {
+          const id = b.dataset.id!;
+          const tgt = (document.querySelector<HTMLInputElement>(`.tgt[data-id="${id}"]`)?.value ?? "").trim();
+          return { sessionId: id, targetDir: tgt };
+        })
+        .filter((m) => m.targetDir);
+    }
+
+    async function doMove(acknowledgeRisk: boolean) {
+      const moves = gather();
+      if (!moves.length) return;
+      moveBtn!.disabled = true;
+      if (statusEl) statusEl.textContent = "Moving…";
+      let data: any;
+      try {
+        const res = await fetch("/api/misfiled", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ moves, acknowledgeRisk }),
+        });
+        data = await res.json();
+      } catch {
+        if (statusEl) statusEl.textContent = "Network error — nothing moved.";
+        moveBtn!.disabled = false;
+        return;
+      }
+
+      if (data.consentRequired) {
+        if (consentText) consentText.textContent = data.disclosure;
+        if (consent) consent.hidden = false;
+        if (statusEl) statusEl.textContent = "";
+        moveBtn!.disabled = false;
+        return;
+      }
+
+      if (consent) consent.hidden = true;
+      const moved = data.moved?.length ?? 0;
+      const skipped = data.skipped ?? [];
+      const errors = data.errors ?? [];
+      if (statusEl) statusEl.textContent = "";
+      if (resultEl) {
+        let msg = `Moved ${moved} session${moved === 1 ? "" : "s"}.`;
+        if (skipped.length) msg += ` Skipped ${skipped.length} (${skipped.map((s: any) => s.reason).join("; ")}).`;
+        if (errors.length) msg += ` ${errors.length} errored: ${errors.map((e: any) => e.error).join("; ")}.`;
+        msg += " Reloading…";
+        resultEl.textContent = msg;
+        resultEl.hidden = false;
+      }
+      setTimeout(() => location.reload(), 1600);
+    }
+
+    moveBtn.addEventListener("click", () => doMove(false));
+    consentProceed?.addEventListener("click", () => doMove(true));
+    consentCancel?.addEventListener("click", () => { if (consent) consent.hidden = true; });
+    refresh();
+  }
+</script>

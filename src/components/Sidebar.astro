@@ -4,6 +4,8 @@ import type { LibraryTree } from "../db/library";
 import type { TopicSummary } from "../db/topics";
 import { rangeLabel } from "../db/date-range";
 import { isJobRunning } from "../lib/jobs";
+import { getDb } from "../db/init";
+import { countMisfiledSessions } from "../db/sessions";
 interface Props { tree: LibraryTree; topics?: TopicSummary[]; activeRepo?: string; activeWorkdir?: string; activeTopic?: number; mode?: string; }
 const { tree, topics = [], activeRepo, activeWorkdir, activeTopic, mode } = Astro.props;
 // Global date-range filter (persisted in the ccaudit-range cookie). Scopes list/search/ask.
@@ -23,6 +25,9 @@ const customTo = isCustom ? isoDay(ct) : "";
 // and back still shows progress and the action can't be re-fired.
 const clusterRunning = isJobRunning("cluster");
 const nameRunning = isJobRunning("name");
+// Count of misfiled sessions, for the "Misfiled" nav badge (cheap indexed query, every page).
+let misfiledCount = 0;
+try { misfiledCount = countMisfiledSessions(getDb()); } catch { /* db not ready — no badge */ }
 ---
 <div id="topbar-progress" aria-hidden="true"></div>
 <div class="flex flex-col h-full" style="color:var(--text-dim);">
@@ -60,6 +65,7 @@ const nameRunning = isJobRunning("name");
     <a href="/graph" class="lib-item" title="Graph view"><span class="ico">⌗</span><span class="lbl-t">Graph view</span></a>
     <a href="/ask" class="lib-item" title="Ask history"><span class="ico">✦</span><span class="lbl-t">Ask history</span></a>
     <a href="/live" class="lib-item" title="Running sessions"><span class="ico">◉</span><span class="lbl-t">Live</span> <span id="live-nav-count" class="ml-auto text-[11px] rail-hide" style="color:var(--c-green); display:none;"></span></a>
+    <a href="/misfiled" class="lib-item" title="Sessions filed in the wrong directory — review and re-home"><span class="ico">⤚</span><span class="lbl-t">Misfiled</span> {misfiledCount > 0 && <span class="ml-auto text-[11px] rail-hide" style="color:var(--amber-bright);">{misfiledCount}</span>}</a>
 
     <div class="px-2.5 pt-3 pb-1 rail-hide" id="title-tools">
       <span class="text-[10.5px] tracking-wider uppercase font-semibold" style="color:var(--text-faint);">Session titles</span>

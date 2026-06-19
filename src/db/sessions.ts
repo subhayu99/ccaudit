@@ -172,6 +172,12 @@ export function listSessions(db: Db, opts: ListSessionsOptions = {}): Session[] 
   return rows.map(rowToSession);
 }
 
+/** How many sessions are flagged misfiled (work-dir inference differs from where they're filed). */
+export function countMisfiledSessions(db: Db): number {
+  const r = db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE inferred_dir IS NOT NULL").get() as { n: number };
+  return r.n;
+}
+
 export function getSessionByFilePath(db: Db, filePath: string): Session | null {
   const row = db
     .prepare("SELECT * FROM sessions WHERE file_path = ?")
