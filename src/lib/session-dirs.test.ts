@@ -163,6 +163,20 @@ describe("inferSessionWorkdir", () => {
     expect(r.mismatch).toBe(false); // proj-b 12 vs proj-a 10 is only 1.2× — below the 2× bar
   });
 
+  it("does not flag when the inferred dir is the same Claude folder as the filed dir (decode ambiguity)", () => {
+    // /Users/me/repo.io and /Users/me/repo/io both encode to the folder "-Users-me-repo-io".
+    const ambFs = (p: string): DirKind => {
+      if (p === "/Users/me/repo.io/.git") return "dir";
+      if (p === "/Users/me/repo.io" || p === "/Users/me/repo.io/src") return "dir";
+      if (p.endsWith(".ts")) return "file";
+      return "missing"; // the decoded "/Users/me/repo/io" doesn't exist on disk
+    };
+    // Filed under the decoded (slash) form; the work references the real dotted dir — same folder.
+    const msgs = Array(8).fill('{"file_path":"/Users/me/repo.io/src/app.ts"}').map(raw);
+    const r = inferSessionWorkdir(msgs, { resolve: ambFs, home, currentDir: "/Users/me/repo/io" });
+    expect(r.mismatch).toBe(false);
+  });
+
   it("does not flag when the dominant other dir is not a real project (no .git/package.json)", () => {
     const plainFs = (p: string): DirKind => {
       if (p === "/Users/me/proj-a/.git") return "dir";

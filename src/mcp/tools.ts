@@ -16,7 +16,7 @@ import { readLiveRegistry } from "../watch/registry.js";
 import { getBootTime } from "../lib/boot-time.js";
 import { readConfig, writeConfig } from "../lib/config.js";
 import { sessionKeepCondition } from "../db/exclusions.js";
-import { isProjectRoot, MISMATCH_DOMINANCE } from "../lib/session-dirs.js";
+import { isProjectRoot, sameProjectFolder, MISMATCH_DOMINANCE } from "../lib/session-dirs.js";
 import { REHOME_DISCLOSURE, applyRehomeToDb, type ApplyRehomeOpts } from "../lib/rehome-apply.js";
 
 export function toolListSessions(
@@ -191,7 +191,11 @@ export function toolListMismatchedSessions(
   // Only surface rows whose inferred target is a real, resumable project — drop generic-container
   // targets like ~/Downloads. fs-check only the pool we'll actually show (cheap in the default view).
   const pool = includeHidden ? marked : marked.filter((m) => !m.hidden);
-  const chosen = pool.filter((m) => isProj(m.r.inferred_dir)).slice(0, limit);
+  const chosen = pool
+    // Drop generic-container targets, and drop same-Claude-folder pairs (decode-ambiguity artifacts
+    // where the "move" target is really the dir the session is already filed under).
+    .filter((m) => isProj(m.r.inferred_dir) && !sameProjectFolder(m.r.inferred_dir, m.r.cwd ?? m.r.project_dir))
+    .slice(0, limit);
 
   const sessions = chosen.map(({ r, hidden }) => ({
     sessionId: r.id,

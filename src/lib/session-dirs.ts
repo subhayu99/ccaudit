@@ -168,6 +168,17 @@ function hasProjectMarker(dir: string, resolve: (p: string) => DirKind): boolean
   return resolve(dir + "/.git") !== "missing" || resolve(dir + "/package.json") === "file";
 }
 
+/**
+ * True if both paths map to the SAME Claude project folder. Claude encodes a launch dir by
+ * replacing every `/` and `.` with `-`, so `~/x/repo.io` and `~/x/repo/io` (and `foo-bar` vs
+ * `foo/bar`) collapse to one folder. When a session's `cwd` is absent we fall back to the decoded
+ * folder name, which can pick the wrong separators — making a correctly-filed session look misfiled
+ * to its own directory. Treating same-folder pairs as not-a-move kills that whole false-positive class.
+ */
+export function sameProjectFolder(a: string, b: string): boolean {
+  return a.replace(/[/.]/g, "-") === b.replace(/[/.]/g, "-");
+}
+
 /** True if `dir` is a resumable project root (holds `.git` or `package.json`) — i.e. a place
  *  `claude --resume` is actually useful, not a generic container like ~/Downloads or ~/Documents. */
 export function isProjectRoot(dir: string, opts: { resolve?: (p: string) => DirKind } = {}): boolean {
@@ -213,7 +224,8 @@ export function inferSessionWorkdir(
     best !== null &&
     bestHits >= minHits &&
     bestHits >= launchHits * MISMATCH_DOMINANCE &&
-    hasProjectMarker(best.dir, resolve);
+    hasProjectMarker(best.dir, resolve) &&
+    !(opts.currentDir != null && sameProjectFolder(best.dir, opts.currentDir));
   return {
     launchRoot,
     launchHits,
