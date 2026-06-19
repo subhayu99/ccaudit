@@ -109,11 +109,27 @@ const tilde = (p: string | null) => (p ? p.replace(/^\/Users\/[^/]+/, "~") : "â€
   .result { border: 1px solid var(--border-soft); background: var(--panel); border-radius: 10px;
     padding: 11px 14px; margin-bottom: 14px; font-size: 13px; color: var(--text); white-space: pre-wrap; }
 
+  /* Custom amber checkbox â€” native boxes rendered as default OS (blue) controls that clashed with the theme. */
+  .sel, #select-all {
+    appearance: none; -webkit-appearance: none;
+    width: 15px; height: 15px; margin: 0; flex-shrink: 0;
+    border: 1.5px solid var(--border); border-radius: 4px;
+    background: var(--canvas); cursor: pointer; position: relative;
+    transition: border-color .12s ease, background-color .12s ease;
+  }
+  .sel:hover:not(:disabled), #select-all:hover:not(:disabled) { border-color: var(--amber); }
+  .sel:checked, #select-all:checked { background: var(--amber); border-color: var(--amber); }
+  .sel:checked::after, #select-all:checked::after {
+    content: ""; position: absolute; left: 4.5px; top: 1px;
+    width: 4px; height: 8px; border: solid #1a1410; border-width: 0 2px 2px 0; transform: rotate(45deg);
+  }
+  .sel:focus-visible, #select-all:focus-visible { outline: 2px solid var(--amber); outline-offset: 1.5px; }
+  .sel:disabled { cursor: not-allowed; opacity: .5; background: var(--panel); border-style: dashed; }
+
   .row { display: flex; gap: 11px; align-items: flex-start; padding: 11px 14px; border-bottom: 1px solid var(--border-soft); }
   .row:last-child { border-bottom: none; }
   .row[data-running] { opacity: .62; }
-  .row .sel { margin-top: 3px; cursor: pointer; }
-  .row[data-running] .sel { cursor: not-allowed; }
+  .row .sel { margin-top: 2px; }
   .row-main { min-width: 0; flex: 1; }
   .row-top { display: flex; align-items: center; gap: 9px; min-width: 0; }
   .row-title { font-weight: 500; color: var(--text); text-decoration: none; max-width: 460px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
