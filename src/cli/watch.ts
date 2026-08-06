@@ -7,7 +7,8 @@ import { getBootTime } from "../lib/boot-time.js";
 import { listLive } from "../db/live-sessions.js";
 import { installAgent, uninstallAgent, agentInstalled, WATCH_LABEL } from "../lib/launchd.js";
 import { writeConfig } from "../lib/config.js";
-import { INDEX_DB_PATH, LOGS_DIR } from "../paths.js";
+import { INDEX_DB_PATH, LOGS_DIR, CLAUDE_PROJECTS_DIR } from "../paths.js";
+import { indexAll } from "../indexer/index-runner.js";
 
 const DAY = 86_400_000;
 
@@ -17,13 +18,25 @@ function cliEntryPath(): string {
 }
 
 /** Internal: one reconcile pass. Invoked by launchd every interval. */
-export function watchTickCommand(): void {
+export async function watchTickCommand(): Promise<void> {
   const db = openDb(INDEX_DB_PATH);
   try {
     const now = Date.now();
     const bootTime = getBootTime(now);
     const summary = runWatchTick(db, { now, bootTime, registry: () => readLiveRegistry({ bootTime }) });
-    console.log(`[${new Date(now).toISOString()}] tick — running=${summary.running} endedNow=${summary.endedNow}`);
+    // Keep the transcript index fresh in the background even when no UI is open — so opening
+    // ccaudit later is instant instead of triggering a full index. Incremental; indexAll
+    // checkpoints the WAL. Best-effort: a live-status tick must never fail on an index error.
+    let indexed = 0;
+    try {
+      const stats = await indexAll(db, { baseDir: CLAUDE_PROJECTS_DIR });
+      indexed = stats.sessionsIndexed;
+    } catch {
+      /* best-effort background refresh */
+    }
+    console.log(
+      `[${new Date(now).toISOString()}] tick — running=${summary.running} endedNow=${summary.endedNow} indexed=${indexed}`
+    );
   } finally {
     db.close();
   }

@@ -15,6 +15,10 @@ import { setTimeout as wait } from "node:timers/promises";
 import { sqliteChildArgs } from "../lib/sqlite-runtime.js";
 import { openInBrowser } from "../lib/open-browser.js";
 import { writeServeState, clearServeState } from "../lib/runtime.js";
+import { makePeriodicIndexer } from "../lib/auto-index.js";
+
+/** How often the idle supervisor re-indexes new transcript activity in the background. */
+const PERIODIC_INDEX_MS = 20_000;
 
 /** Package root = parent of the CLI bundle (dist/index.js → <pkg>). */
 function packageRoot(): string {
@@ -117,12 +121,12 @@ export async function serveCommand(opts: { port?: string; open?: boolean; watch?
   const server = built
     ? spawn(process.execPath, [...sqliteChildArgs(), entry], {
         stdio: "inherit",
-        env: { ...process.env, HOST: "127.0.0.1", PORT: port, CCAUDIT_CLI_PATH: cliPath },
+        env: { ...process.env, HOST: "127.0.0.1", PORT: port, CCAUDIT_CLI_PATH: cliPath, CCAUDIT_PREINDEXED: "1" },
       })
     : spawn("npx", ["astro", "dev", "--port", port, "--host", "127.0.0.1"], {
         cwd: existsSync(join(root, "astro.config.mjs")) ? root : process.cwd(),
         stdio: "inherit",
-        env: { ...process.env, CCAUDIT_CLI_PATH: cliPath },
+        env: { ...process.env, CCAUDIT_CLI_PATH: cliPath, CCAUDIT_PREINDEXED: "1" },
       });
 
   // Record where we're serving so `ccaudit open` can reuse this instance instead of rebooting.
@@ -133,12 +137,33 @@ export async function serveCommand(opts: { port?: string; open?: boolean; watch?
       kleur.dim(` · reopen later: `) +
       kleur.reset("ccaudit open")
   );
+
+  // Keep the index fresh while we're up, so new messages appear without the user re-running
+  // anything and without re-indexing on every `open`. This supervisor process is otherwise idle
+  // (the web server is the separate child), and node:sqlite is synchronous, so the incremental
+  // pass runs safely here on its own connection — never in the web child. Each pass checkpoints
+  // the WAL.
+  const periodicDb = openDb(INDEX_DB_PATH);
+  const periodic = makePeriodicIndexer(
+    () => indexAll(periodicDb, { baseDir: CLAUDE_PROJECTS_DIR }).then(() => undefined),
+    { intervalMs: PERIODIC_INDEX_MS }
+  );
+  periodic.start();
+  const stopPeriodic = (): void => {
+    periodic.stop();
+    try {
+      periodicDb.close();
+    } catch {
+      /* ignore */
+    }
+  };
   // Surface child failures instead of hanging forever.
   server.on("error", (err) => {
     console.error(kleur.red(`Failed to start server: ${err.message}`));
+    stopPeriodic();
     process.exit(1);
   });
-  server.on("exit", (code) => { clearServeState(); process.exit(code ?? 0); });
+  server.on("exit", (code) => { stopPeriodic(); clearServeState(); process.exit(code ?? 0); });
 
   if (opts.open !== false && !process.env.SSH_TTY) {
     const url = `http://127.0.0.1:${port}`;
@@ -155,7 +180,7 @@ export async function serveCommand(opts: { port?: string; open?: boolean; watch?
     }
   }
 
-  const cleanup = () => { clearServeState(); server.kill("SIGTERM"); process.exit(0); };
+  const cleanup = () => { stopPeriodic(); clearServeState(); server.kill("SIGTERM"); process.exit(0); };
   process.on("SIGINT", cleanup);
   process.on("SIGTERM", cleanup);
   await new Promise(() => {});

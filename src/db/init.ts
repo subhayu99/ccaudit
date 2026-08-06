@@ -254,8 +254,9 @@ export function openDb(path: string): Db {
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
   // Wait (don't throw SQLITE_BUSY) when another connection holds a write lock — e.g. the
-  // `ccaudit name` bulk writer running while the web server is also indexing.
-  db.exec("PRAGMA busy_timeout = 5000");
+  // periodic background indexer running while the web server reads, or the launchd watch
+  // tick writing live-session status. Generous because writes touch a large FTS index.
+  db.exec("PRAGMA busy_timeout = 15000");
   // Read-path perf pragmas (safe on a writable WAL connection).
   db.exec("PRAGMA synchronous = NORMAL");
   db.exec("PRAGMA cache_size = -16000");
@@ -309,4 +310,19 @@ export function getDb(): Db {
 export function closeDb(): void {
   _db?.close();
   _db = null;
+}
+
+/**
+ * Fold committed WAL frames back into the main DB and truncate the -wal file to zero.
+ * Without this the WAL grows without bound (it is never checkpointed on its own while
+ * long-lived reader connections — e.g. leftover MCP servers — pin old snapshots), which
+ * slows every write until concurrent writers exceed `busy_timeout` and get SQLITE_BUSY.
+ * Best-effort: a busy checkpoint just means the next pass reclaims it.
+ */
+export function checkpointWal(db: Db): void {
+  try {
+    db.pragma("wal_checkpoint(TRUNCATE)");
+  } catch {
+    /* another connection held the write lock — the next indexAll will checkpoint */
+  }
 }

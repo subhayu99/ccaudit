@@ -1,4 +1,5 @@
 import type { Db } from "../db/init.js";
+import { checkpointWal } from "../db/init.js";
 import { mkdirSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { walkProjects } from "./walk.js";
@@ -181,6 +182,10 @@ export async function indexAll(
   stats.inferenceBackfilled = backfillInference(db, {
     onProgress: (current, total) => opts.onProgress?.({ phase: "infer", current, total }),
   });
+
+  // Fold the WAL back into the DB and truncate it, so it can't grow without bound across the
+  // many index passes (serve boot, periodic refresh, watch tick). Bounds the SQLITE_BUSY risk.
+  checkpointWal(db);
 
   return stats;
 }

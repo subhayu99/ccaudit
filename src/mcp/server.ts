@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { getDb } from "../db/init.js";
+import { getDb, closeDb } from "../db/init.js";
 import {
   toolListSessions,
   toolSearchSessions,
@@ -118,4 +118,29 @@ export async function startMcpServer(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   // NOTE: stdout is owned by the MCP protocol — never console.log here.
+
+  // Exit when the client (Claude Code) goes away. Without this, each spawned MCP server lingers
+  // forever after its parent session ends, and every lingering connection pins the DB's WAL open
+  // so it can never be checkpointed — the cause of the 261 MB WAL and the "database is locked"
+  // crash. Closing on stdin EOF keeps idle servers from piling up.
+  const sdkOnClose = transport.onclose; // set by server.connect() — don't clobber it
+  let shuttingDown = false;
+  const shutdown = (): void => {
+    if (shuttingDown) return; // stdin can emit both 'end' and 'close'
+    shuttingDown = true;
+    try {
+      sdkOnClose?.();
+    } catch {
+      /* ignore */
+    }
+    try {
+      closeDb();
+    } catch {
+      /* ignore */
+    }
+    process.exit(0);
+  };
+  transport.onclose = shutdown;
+  process.stdin.on("end", shutdown);
+  process.stdin.on("close", shutdown);
 }
