@@ -7,7 +7,7 @@ import { getBootTime } from "../lib/boot-time.js";
 import { listLive } from "../db/live-sessions.js";
 import { installAgent, uninstallAgent, agentInstalled, WATCH_LABEL } from "../lib/launchd.js";
 import { writeConfig } from "../lib/config.js";
-import { INDEX_DB_PATH, LOGS_DIR, CLAUDE_PROJECTS_DIR } from "../paths.js";
+import { INDEX_DB_PATH, LOGS_DIR } from "../paths.js";
 import { indexAll } from "../indexer/index-runner.js";
 
 const DAY = 86_400_000;
@@ -29,7 +29,7 @@ export async function watchTickCommand(): Promise<void> {
     // checkpoints the WAL. Best-effort: a live-status tick must never fail on an index error.
     let indexed = 0;
     try {
-      const stats = await indexAll(db, { baseDir: CLAUDE_PROJECTS_DIR });
+      const stats = await indexAll(db, {});
       indexed = stats.sessionsIndexed;
     } catch {
       /* best-effort background refresh */

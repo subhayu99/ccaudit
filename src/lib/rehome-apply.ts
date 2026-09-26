@@ -39,6 +39,7 @@ export function applyRehomeToDb(
   targetDir: string,
   opts: ApplyRehomeOpts = {}
 ): RehomeResult {
+  if (session.provider === "codex") throw new Error("Codex session logs cannot be re-homed; use codex resume from the desired directory.");
   const projectsRoot = opts.projectsRoot ?? CLAUDE_PROJECTS_DIR;
   const backupDir = opts.backupDir ?? join(CCAUDIT_DIR, "backups", "rehome");
   const stamp = opts.stamp ?? new Date().toISOString().replace(/[:.]/g, "-");

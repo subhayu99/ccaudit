@@ -40,7 +40,7 @@ if (nodeTooOldForSqlite()) {
 const program = new Command();
 program
   .name("ccaudit")
-  .description("Browse, search, and audit your Claude Code session history")
+  .description("Browse, search, and audit your Claude Code and Codex session history")
   .version(pkgVersion);
 
 program
@@ -54,7 +54,7 @@ program
 
 program
   .command("reindex")
-  .description("Rebuild the SQLite index from ~/.claude/projects/")
+  .description("Rebuild the SQLite index from Claude Code and Codex logs")
   .option("--force", "re-parse even if file mtime+size are unchanged")
   .action(reindexCommand);
 

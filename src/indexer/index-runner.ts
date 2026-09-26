@@ -2,6 +2,7 @@ import type { Db } from "../db/init.js";
 import { checkpointWal } from "../db/init.js";
 import { mkdirSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
+import { walkCodexSessions, parseCodexSession } from "./codex.js";
 import { walkProjects } from "./walk.js";
 import { parseJsonlFile } from "./parse.js";
 import { newAggregator, finalizeAggregator } from "./aggregate.js";
@@ -11,7 +12,7 @@ import { resolveWorkdirs } from "./resolve-workdirs.js";
 import { inferSessionWorkdir } from "../lib/session-dirs.js";
 import { backfillInference } from "./backfill-inference.js";
 import { isExcludedPath, listExclusions } from "../db/exclusions.js";
-import { CLAUDE_PROJECTS_DIR, LOGS_DIR } from "../paths.js";
+import { CLAUDE_PROJECTS_DIR, CODEX_DIRS, LOGS_DIR } from "../paths.js";
 import type { Session } from "../types.js";
 
 // Structured progress so callers can render a live spinner/counter instead of a
@@ -24,6 +25,8 @@ export type IndexProgress =
 
 export type IndexRunOptions = {
   baseDir?: string;        // default: ~/.claude/projects
+  /** Explicit baseDir isolates Claude fixtures unless codexDirs is also supplied. */
+  codexDirs?: string[];
   force?: boolean;         // re-index even if mtime+size match
   onProgress?: (p: IndexProgress) => void;
 };
@@ -56,7 +59,10 @@ export async function indexAll(
     filesSeen: 0, sessionsIndexed: 0, sessionsSkipped: 0,
     malformedLines: 0, errors: 0, workdirsResolved: 0, inferenceBackfilled: 0,
   };
-  const entries = walkProjects(baseDir);
+  const entries = [
+    ...walkProjects(baseDir).map(e => ({ ...e, provider: "claude" as const })),
+    ...await walkCodexSessions(opts.codexDirs ?? (opts.baseDir ? [] : CODEX_DIRS)),
+  ];
   opts.onProgress?.({ phase: "scan", total: entries.length });
   const exclusions = listExclusions(db);
   for (const e of entries) {
@@ -85,18 +91,29 @@ export async function indexAll(
     }
 
     const agg = newAggregator();
+    let state;
     try {
-      for await (const item of parseJsonlFile(e.filePath, {
-        onError: (err) => {
-          stats.malformedLines += 1;
-          logIndexError(
-            `${new Date().toISOString()} ${e.filePath}:${err.lineNo} ${
-              err.error instanceof Error ? err.error.message : String(err.error)
-            }`
-          );
-        },
-      })) {
-        agg.observe({ ...item, sessionId: e.sessionId });
+      if (e.provider === "codex") {
+        state = await parseCodexSession(e.filePath, e.sessionId, {
+          onError: (err) => {
+            stats.malformedLines += 1;
+            logIndexError(`${new Date().toISOString()} ${e.filePath}:${err.lineNo} malformed Codex record`);
+          },
+        });
+      } else {
+        for await (const item of parseJsonlFile(e.filePath, {
+          onError: (err) => {
+            stats.malformedLines += 1;
+            logIndexError(
+              `${new Date().toISOString()} ${e.filePath}:${err.lineNo} ${
+                err.error instanceof Error ? err.error.message : String(err.error)
+              }`
+            );
+          },
+        })) {
+          agg.observe({ ...item, sessionId: e.sessionId });
+        }
+        state = finalizeAggregator(agg);
       }
     } catch (err) {
       stats.errors += 1;
@@ -105,8 +122,6 @@ export async function indexAll(
       );
       continue;
     }
-
-    const state = finalizeAggregator(agg);
 
     // Exclude ccaudit's own `claude -p` tool sessions (they pollute the history with our
     // prompt text). Evict any previously-indexed copy and skip insertion.
@@ -124,7 +139,7 @@ export async function indexAll(
     let inferredHits = 0;
     let inferredLaunchHits = 0;
     try {
-      const inf = inferSessionWorkdir(state.messages, { currentDir: state.cwd ?? e.projectDir });
+      const inf = e.provider === "codex" ? { inferredDir: null, inferredHits: 0, launchHits: 0 } : inferSessionWorkdir(state.messages, { currentDir: state.cwd ?? e.projectDir });
       inferredDir = inf.inferredDir;
       inferredHits = inf.inferredHits;
       inferredLaunchHits = inf.launchHits;
@@ -134,6 +149,7 @@ export async function indexAll(
 
     const session: Session = {
       id: e.sessionId,
+      provider: e.provider,
       projectDir: e.projectDir,
       projectLabel: e.projectLabel,
       filePath: e.filePath,
@@ -159,8 +175,9 @@ export async function indexAll(
     // so when the file got LARGER we keep the existing message rows and let insertMessages
     // (INSERT OR IGNORE) add just the new lines — FTS re-tokenizes only the delta, not the whole
     // (possibly tens-of-thousands-of-message) session. Any other change (shrunk, or --force) does
-    // the safe full rebuild: delete every row, then re-insert.
-    const appendOnly = !opts.force && !!existing && e.fileSize > existing.fileSize;
+    // the safe full rebuild: delete every row, then re-insert. Codex can replace event
+    // echoes with response items, so changed Codex logs always rebuild their rows.
+    const appendOnly = e.provider === "claude" && !opts.force && !!existing && e.fileSize > existing.fileSize;
     const tx = db.transaction(() => {
       upsertSession(db, session);
       if (!appendOnly) deleteSessionMessages(db, e.sessionId);

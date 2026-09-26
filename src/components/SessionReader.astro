@@ -11,7 +11,7 @@ import { cleanPromptText } from "../lib/clean-prompt";
 import { segmentSession } from "../lib/segment";
 import { getLabels, spineHash } from "../db/labels";
 import { buildResumeCommand } from "../lib/resume";
-import { sessionCostUsd, formatUsd, totalTokens } from "../lib/pricing";
+import { sessionCostUsd, formatUsd, totalTokens, hasUnpricedUsage } from "../lib/pricing";
 
 interface Props { sessionId: string; }
 const { sessionId } = Astro.props;
@@ -72,7 +72,9 @@ type Block =
 
 function toolName(rawJson: string): string {
   try {
-    const c = JSON.parse(rawJson)?.message?.content;
+    const raw = JSON.parse(rawJson);
+    if (typeof raw?.payload?.name === "string") return raw.payload.name;
+    const c = raw?.message?.content;
     if (Array.isArray(c)) {
       const u = c.find((p: { type?: string }) => p?.type === "tool_use");
       if (u?.name) return u.name as string;
@@ -86,7 +88,7 @@ let compactN = 0;
 const blocks: Block[] = [];
 for (const { m, kind } of visible) {
   if (kind === "user-text") blocks.push({ t: "user", html: await renderMarkdown(m.textContent), lineNo: m.lineNo, label: "You" });
-  else if (kind === "assistant-text") blocks.push({ t: "assistant", html: await renderMarkdown(m.textContent), lineNo: m.lineNo, label: "Claude" });
+  else if (kind === "assistant-text") blocks.push({ t: "assistant", html: await renderMarkdown(m.textContent), lineNo: m.lineNo, label: session?.provider === "codex" ? "Codex" : "Claude" });
   else if (kind === "tool-use") blocks.push({ t: "tool-use", text: toolName(m.rawJson), lineNo: m.lineNo });
   else if (kind === "tool-result") blocks.push({ t: "tool-result", text: truncate(m.textContent ?? "", 280) || "result", lineNo: m.lineNo });
   else if (kind === "attachment") blocks.push({ t: "attachment", text: m.textContent ?? "attachment", lineNo: m.lineNo });
@@ -101,7 +103,7 @@ const title = session
 // the dir-hash and is not a safe filesystem path, so we never shell out to it.
 // POSIX-quote the cwd to prevent shell injection from paths with spaces/quotes.
 const resumeCwd = session?.cwd && existsSync(session.cwd) ? session.cwd : null;
-const resumeCmd = buildResumeCommand(sessionId, resumeCwd);
+const resumeCmd = buildResumeCommand(sessionId, resumeCwd, session?.provider ?? "claude");
 const noiseCount = classified.length - visible.length;
 
 // minimap landmarks: user turns + compacts
@@ -123,6 +125,7 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
     <header class="reader-head px-7 pt-6 pb-4" style="border-bottom:1px solid var(--border-soft);">
       <div class="text-[12px] mb-1.5 flex items-center gap-2" style="color:var(--text-faint);">
         <a href="/" style="color:var(--text-faint); text-decoration:none;">← Library</a>
+        <span>·</span><span>{session.provider === "codex" ? "Codex" : "Claude Code"}</span>
         {session.gitBranch && <><span>·</span><span class="font-mono-w">{session.gitBranch}</span></>}
       </div>
       <div class="title-row" data-sid={session.id} style="display:flex; align-items:flex-start; gap:8px; max-width:64ch;">
@@ -140,16 +143,20 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
               <a href={`/api/export?session=${session.id}&format=md&raw=1`} download class="dl-raw">Markdown (raw + tools)</a>
             </div>
           </details>
-          <details class="dl-menu mv-menu" id="mv-menu">
+          {session.provider !== "codex" && <details class="dl-menu mv-menu" id="mv-menu">
             <summary class="title-mini" title="Move this session to the directory it actually worked in">⤚</summary>
             <div class="dl-pop"><span class="dl-h">Move to…</span><div id="mv-body" class="mv-body"><span class="mv-sub">…</span></div></div>
-          </details>
+          </details>}
         </div>
       </div>
       <div class="flex items-center gap-4 mt-3 text-[12.5px] flex-wrap" style="color:var(--text-dim);">
         <span>{session.messageCount.toLocaleString()} messages</span>
         {session.compactCount > 0 && <span style="color:var(--c-orange);">⊟ {session.compactCount} compacts</span>}
-        {session.tokenUsage && <span style="color:var(--amber);" title={`${totalTokens(session.tokenUsage).toLocaleString()} tokens (estimated cost)`}>~{formatUsd(sessionCostUsd(session.tokenUsage))}</span>}
+        {session.tokenUsage && <span style="color:var(--amber);" title={`${totalTokens(session.tokenUsage).toLocaleString()} tokens`}>
+          {hasUnpricedUsage(session.tokenUsage)
+            ? `${totalTokens(session.tokenUsage).toLocaleString()} tokens · ${sessionCostUsd(session.tokenUsage) > 0 ? "partial cost estimate" : "cost unavailable"}`
+            : `~${formatUsd(sessionCostUsd(session.tokenUsage))}`}
+        </span>}
         {noiseCount > 0 && <span style="color:var(--text-faint);">{noiseCount} hidden</span>}
         <span>{formatTimestamp(session.startedAt)} → {formatTimestamp(session.lastActivity)}</span>
         <button id="resume-btn" class="resume">▶ Resume session</button>
@@ -175,7 +182,7 @@ const landmarks = blocks.filter((b) => b.t === "user" || b.t === "compact");
               </div>
             )}
             <div class={`turn ${b.t}`} id={`m${b.lineNo}`}>
-              <div class={`role ${b.t}`}>{b.t === "user" ? "● You" : "✦ Claude"}</div>
+              <div class={`role ${b.t}`}>{b.t === "user" ? "● You" : `✦ ${b.label}`}</div>
               <div class="bubble prose-warm" set:html={b.html}></div>
             </div>
           </Fragment>

@@ -18,7 +18,7 @@ export const GET: APIRoute = ({ params }) => {
   // is a lossy decode of the dir-hash and is NOT a safe filesystem path, so we
   // never shell out to it. POSIX-quote the cwd to prevent shell injection.
   const realCwd = session.cwd && existsSync(session.cwd) ? session.cwd : null;
-  const command = buildResumeCommand(session.id, realCwd);
+  const command = buildResumeCommand(session.id, realCwd, session.provider ?? "claude");
   return new Response(
     JSON.stringify({
       command,

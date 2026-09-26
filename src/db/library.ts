@@ -3,7 +3,7 @@ import { listWorkdirs } from "./workdirs.js";
 import { computeRepoComponents } from "../identity/components.js";
 import { listExclusions, sessionKeepCondition, rulesSignature } from "./exclusions.js";
 import { cleanPromptText } from "../lib/clean-prompt.js";
-import { sessionCostUsd, type TokenUsage } from "../lib/pricing.js";
+import { sessionCostUsd, hasUnpricedUsage, type TokenUsage } from "../lib/pricing.js";
 import { rangeCondition, type DateRange } from "./date-range.js";
 
 function parseTokenUsage(raw: string | null): TokenUsage | null {
@@ -31,11 +31,13 @@ export function dayBucket(ts: number | null, nowMs: number): DayLabel {
 
 export type LibrarySession = {
   id: string;
+  provider?: "claude" | "codex";
   title: string;
   lastActivity: number | null;
   messageCount: number;
   compactCount: number;
   costUsd: number;
+  costIncomplete?: boolean;
   workdirPath: string;
 };
 export type LibraryWorkdir = {
@@ -66,7 +68,7 @@ function titleOf(aiTitle: string | null, firstPrompt: string | null, id: string)
 }
 
 type LibRow = {
-  id: string; cwd: string; ai_title: string | null; first_prompt: string | null;
+  id: string; provider: "claude" | "codex"; cwd: string; ai_title: string | null; first_prompt: string | null;
   last_activity: number | null; message_count: number; compact_count: number;
   token_usage: string | null;
 };
@@ -106,7 +108,7 @@ function buildLibraryTree(db: Db, range: DateRange | null): LibraryTree {
   const rg = rangeCondition(range, "last_activity");
   const rows = db
     .prepare(
-      `SELECT id, cwd, ai_title, first_prompt, last_activity AS last_activity,
+      `SELECT id, provider, cwd, ai_title, first_prompt, last_activity AS last_activity,
               message_count AS message_count, compact_count AS compact_count, token_usage
          FROM sessions
         WHERE cwd IS NOT NULL AND ${excl.sql} AND ${rg.sql}
@@ -118,9 +120,10 @@ function buildLibraryTree(db: Db, range: DateRange | null): LibraryTree {
   const byWorkdir = new Map<string, LibrarySession[]>();
   for (const r of rows) {
     const s: LibrarySession = {
-      id: r.id, title: titleOf(r.ai_title, r.first_prompt, r.id),
+      id: r.id, provider: r.provider, title: titleOf(r.ai_title, r.first_prompt, r.id),
       lastActivity: r.last_activity, messageCount: r.message_count,
       compactCount: r.compact_count, costUsd: sessionCostUsd(parseTokenUsage(r.token_usage)),
+      costIncomplete: hasUnpricedUsage(parseTokenUsage(r.token_usage)),
       workdirPath: r.cwd,
     };
     const list = byWorkdir.get(r.cwd);
@@ -162,8 +165,8 @@ export type Selection =
   | { mode: "recent" | "all" };
 
 export type ListItem = {
-  id: string; title: string; workdirLabel: string;
-  lastActivity: number | null; messageCount: number; compactCount: number; costUsd: number;
+  id: string; provider?: "claude" | "codex"; title: string; workdirLabel: string;
+  lastActivity: number | null; messageCount: number; compactCount: number; costUsd: number; costIncomplete?: boolean;
 };
 export type SortMode = "time" | "cost" | "messages";
 export type ListGroup = { label: DayLabel | "Recent" | "Most expensive" | "Most messages"; items: ListItem[] };
@@ -188,9 +191,9 @@ export function listSessionsGrouped(
   let header: { title: string; subtitle: string | null } = { title: "All sessions", subtitle: null };
 
   const toItem = (s: LibrarySession, workdirLabel: string): ListItem => ({
-    id: s.id, title: s.title, workdirLabel,
+    id: s.id, provider: s.provider, title: s.title, workdirLabel,
     lastActivity: s.lastActivity, messageCount: s.messageCount, compactCount: s.compactCount,
-    costUsd: s.costUsd,
+    costUsd: s.costUsd, costIncomplete: s.costIncomplete,
   });
 
   if ("repo" in sel) {

@@ -62,6 +62,34 @@ describe("getLibraryTree", () => {
     teardown();
   });
 
+  it("preserves provider in session cards", () => {
+    setup();
+    const db = openDb(dbPath);
+    upsertWorkdir(db, wd("/w/codex", ["root"]));
+    upsertSession(db, { ...sess("codex:thread-1", "/w/codex", "Fix auth"), provider: "codex" });
+    expect(getLibraryTree(db).repos[0]!.workdirs[0]!.sessions[0]!.provider).toBe("codex");
+    db.close();
+    teardown();
+  });
+
+  it("marks a card's known cost incomplete when another model is unpriced", () => {
+    setup();
+    const db = openDb(dbPath);
+    upsertWorkdir(db, wd("/w/codex", ["root"]));
+    upsertSession(db, {
+      ...sess("codex:mixed", "/w/codex", "Mixed models"), provider: "codex",
+      tokenUsage: {
+        "gpt-6-sol": { input: 1_000_000, output: 0, cacheRead: 0, cacheCreation: 0 },
+        "unknown-model": { input: 1_000_000, output: 0, cacheRead: 0, cacheCreation: 0 },
+      },
+    });
+    const item = listSessionsGrouped(db, { mode: "all" }, NOW).groups[0]!.items[0]!;
+    expect(item.costUsd).toBe(2);
+    expect(item.costIncomplete).toBe(true);
+    db.close();
+    teardown();
+  });
+
   it("omits sessions in excluded directories", () => {
     setup();
     const db = openDb(dbPath);

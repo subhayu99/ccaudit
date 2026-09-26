@@ -48,6 +48,11 @@ export async function moveCommand(
       console.error(kleur.dim("  Run `ccaudit list` to find the full session id."));
       process.exit(1);
     }
+    if (session.provider === "codex") {
+      console.error("Moving Codex session logs is not supported.");
+      process.exitCode = 1;
+      return;
+    }
     messages = targetDir ? [] : getSessionMessages(db, sessionId);
   } finally {
     db.close();

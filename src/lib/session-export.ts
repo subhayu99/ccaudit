@@ -22,7 +22,9 @@ export function exportFilename(session: Session, format: ExportFormat): string {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
       .slice(0, 60) || "session";
-  return `ccaudit-${slug}-${session.id.slice(0, 8)}.${format}`;
+  const nativeId = session.provider === "codex" ? session.id.replace(/^codex:/, "") : session.id;
+  const shortId = nativeId.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 8);
+  return `ccaudit-${slug}-${shortId}.${format}`;
 }
 
 function authorLabel(m: MessageRow): string {
@@ -59,6 +61,7 @@ function metaLines(session: Session): string[] {
   const meta = [
     `- **Project:** ${session.projectLabel ?? "unknown"}`,
   ];
+  meta.push(`- **Provider:** ${session.provider === "codex" ? "Codex" : "Claude Code"}`);
   if (session.cwd) meta.push(`- **Directory:** \`${session.cwd}\``);
   if (session.gitBranch) meta.push(`- **Branch:** ${session.gitBranch}`);
   meta.push(`- **Started:** ${formatTimestamp(session.startedAt)}`);

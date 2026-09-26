@@ -32,3 +32,10 @@ export function projectLabel(realPath: string): string {
   const parts = realPath.split("/").filter(Boolean);
   return parts.slice(-2).join("/");
 }
+
+/** Codex rollout logs; a custom sessions root does not implicitly read the real archive. */
+const codexHome = process.env.CODEX_HOME || join(home(), ".codex");
+export const CODEX_SESSIONS_DIR = process.env.CCAUDIT_CODEX_DIR || join(codexHome, "sessions");
+export const CODEX_ARCHIVE_DIR = process.env.CCAUDIT_CODEX_ARCHIVE_DIR ||
+  (process.env.CCAUDIT_CODEX_DIR ? null : join(codexHome, "archived_sessions"));
+export const CODEX_DIRS = [CODEX_SESSIONS_DIR, ...(CODEX_ARCHIVE_DIR ? [CODEX_ARCHIVE_DIR] : [])];

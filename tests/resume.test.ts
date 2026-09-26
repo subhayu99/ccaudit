@@ -14,4 +14,12 @@ describe("buildResumeCommand", () => {
     expect(buildResumeCommand("s-1", null))
       .toBe("claude --resume s-1  # original cwd unknown");
   });
+  it("resumes a Codex session using its native id", () => {
+    expect(buildResumeCommand("codex:thread-123", "/tmp/my project", "codex"))
+      .toBe("cd '/tmp/my project'\ncodex resume thread-123");
+  });
+  it("quotes an unsafe native session id as a shell argument", () => {
+    expect(buildResumeCommand("codex:bad;id", null, "codex"))
+      .toBe("codex resume 'bad;id'  # original cwd unknown");
+  });
 });

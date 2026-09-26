@@ -36,13 +36,18 @@ const SORTS: { key: SortMode; label: string }[] = [
         <a href={sessionHref(it.id)} class="card" data-active={it.id === activeSession}>
           <div class="ct-title">{it.title}</div>
           <div class="ct-meta">
+            {it.provider === "codex" && <span class="badge provider" title="Codex session">Codex</span>}
             <span class="badge wd" title={`folder · ${it.workdirLabel}`}>{it.workdirLabel}</span>
             <span class="badge msg" title={`${it.messageCount.toLocaleString()} messages`}>{it.messageCount.toLocaleString()}</span>
             {it.compactCount > 0 && (
               <span class="badge cmp" title={`${it.compactCount} compact${it.compactCount === 1 ? "" : "s"}`}>⊟ {it.compactCount}</span>
             )}
-            {it.costUsd > 0 && (
-              <span class="badge cost" title={`~${formatUsd(it.costUsd)} estimated AI spend`}>~{formatUsd(it.costUsd)}</span>
+            {(it.costUsd > 0 || it.costIncomplete) && (
+              <span class="badge cost" title={it.costIncomplete ? "Some model usage has no price estimate" : `~${formatUsd(it.costUsd)} estimated AI spend`}>
+                {it.costIncomplete
+                  ? (it.costUsd > 0 ? `~${formatUsd(it.costUsd)} partial` : "cost unavailable")
+                  : `~${formatUsd(it.costUsd)}`}
+              </span>
             )}
             <span class="ct-time" title={formatTimestamp(it.lastActivity)}>{relativeTime(it.lastActivity)}</span>
           </div>
@@ -64,6 +69,7 @@ const SORTS: { key: SortMode; label: string }[] = [
   .badge { display:inline-flex; align-items:center; gap:3px; padding:1px 7px; border-radius:12px; font-size:10.5px; font-family:var(--mono); white-space:nowrap; }
   /* Color = meaning: violet folder · green messages · orange compacts. */
   .badge.wd  { background:rgba(155,130,214,.16); color:#c2b0e8; max-width:150px; overflow:hidden; text-overflow:ellipsis; }
+  .badge.provider { background:rgba(107,155,209,.18); color:#9fc8ef; }
   .badge.msg { background:rgba(127,174,122,.18); color:#9ccd96; }
   .badge.cmp { background:rgba(207,138,74,.18); color:#e6ad73; }
   .badge.cost { background:rgba(210,168,95,.16); color:#dcbd7f; }

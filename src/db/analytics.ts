@@ -1,5 +1,5 @@
 import type { Db } from "./init.js";
-import { modelCostUsd, type TokenUsage } from "../lib/pricing.js";
+import { modelCostUsd, hasUnpricedUsage, type TokenUsage } from "../lib/pricing.js";
 import { rangeCondition, type DateRange } from "./date-range.js";
 
 /** session-id subquery for the range, or "" when unbounded (keeps the unfiltered fast path). */
@@ -8,8 +8,8 @@ function rangeSessionClause(range: DateRange | null, col = "session_id"): { sql:
   return rg.sql === "1" ? { sql: "", params: {} } : { sql: `AND ${col} IN (SELECT id FROM sessions WHERE ${rg.sql})`, params: rg.params };
 }
 
-export type ModelSpend = { model: string; tokens: number; costUsd: number };
-export type Spend = { totalCostUsd: number; totalTokens: number; byModel: ModelSpend[] };
+export type ModelSpend = { model: string; tokens: number; costUsd: number; hasUnpricedUsage: boolean };
+export type Spend = { totalCostUsd: number; totalTokens: number; hasUnpricedUsage: boolean; byModel: ModelSpend[] };
 
 /** Aggregate estimated AI spend across all indexed sessions, from captured per-model token usage. */
 export function getSpend(db: Db, range: DateRange | null = null): Spend {
@@ -17,26 +17,31 @@ export function getSpend(db: Db, range: DateRange | null = null): Spend {
   const rows = db
     .prepare(`SELECT token_usage FROM sessions WHERE token_usage IS NOT NULL AND ${rg.sql}`)
     .all(rg.params) as Array<{ token_usage: string }>;
-  const byModel = new Map<string, { tokens: number; costUsd: number }>();
+  const byModel = new Map<string, { tokens: number; costUsd: number; hasUnpricedUsage: boolean }>();
   let totalCostUsd = 0;
   let totalTokens = 0;
+  let hasUnpriced = false;
   for (const r of rows) {
     let usage: TokenUsage;
     try { usage = JSON.parse(r.token_usage) as TokenUsage; } catch { continue; }
     for (const [model, u] of Object.entries(usage)) {
       const tokens = u.input + u.output + u.cacheRead + u.cacheCreation;
       const cost = modelCostUsd(model, u);
+      const modelUnpriced = hasUnpricedUsage({ [model]: u });
+      hasUnpriced ||= modelUnpriced;
       totalTokens += tokens;
       totalCostUsd += cost;
-      const e = byModel.get(model) ?? { tokens: 0, costUsd: 0 };
+      const e = byModel.get(model) ?? { tokens: 0, costUsd: 0, hasUnpricedUsage: false };
       e.tokens += tokens;
       e.costUsd += cost;
+      e.hasUnpricedUsage ||= modelUnpriced;
       byModel.set(model, e);
     }
   }
   return {
     totalCostUsd,
     totalTokens,
+    hasUnpricedUsage: hasUnpriced,
     byModel: [...byModel.entries()]
       .map(([model, v]) => ({ model, ...v }))
       .sort((a, b) => b.costUsd - a.costUsd),
@@ -111,15 +116,20 @@ export function getToolUsage(db: Db, range: DateRange | null = null): ToolUsage[
   const rc = rangeSessionClause(range, "session_id");
   const rows = db
     .prepare(
-      `SELECT raw_json FROM messages
-        WHERE type = 'assistant' AND raw_json LIKE '%"tool_use"%' ${rc.sql}`
+      `SELECT type, raw_json FROM messages
+        WHERE (type = 'tool-use' OR (type = 'assistant' AND raw_json LIKE '%"tool_use"%')) ${rc.sql}`
     )
-    .all(rc.params) as Array<{ raw_json: string }>;
+    .all(rc.params) as Array<{ type: string; raw_json: string }>;
 
   const counts = new Map<string, number>();
   for (const r of rows) {
     try {
       const raw = JSON.parse(r.raw_json);
+      if (r.type === "tool-use") {
+        const name = typeof raw?.payload?.name === "string" ? raw.payload.name : "unknown";
+        counts.set(name, (counts.get(name) ?? 0) + 1);
+        continue;
+      }
       const content = raw?.message?.content;
       if (!Array.isArray(content)) continue;
       for (const part of content) {

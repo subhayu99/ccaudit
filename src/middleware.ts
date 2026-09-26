@@ -1,7 +1,6 @@
 import { defineMiddleware } from "astro:middleware";
 import { getDb } from "./db/init.js";
 import { indexAll } from "./indexer/index-runner.js";
-import { CLAUDE_PROJECTS_DIR } from "./paths.js";
 import { shouldAutoIndex } from "./lib/auto-index.js";
 
 let hasIndexed = false;
@@ -17,7 +16,7 @@ export const onRequest = defineMiddleware(async (_context, next) => {
       try {
         // Share the process-wide handle (never closed) so subsequent SSR reads reuse it.
         const db = getDb();
-        const stats = await indexAll(db, { baseDir: CLAUDE_PROJECTS_DIR });
+        const stats = await indexAll(db, {});
         console.log(
           `[ccaudit] Auto-reindex: ${stats.sessionsIndexed} indexed, ${stats.sessionsSkipped} skipped`
         );

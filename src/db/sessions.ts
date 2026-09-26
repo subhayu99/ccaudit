@@ -4,6 +4,7 @@ import { exclusionCondition, sessionKeepCondition } from "./exclusions.js";
 
 type SessionRowSql = {
   id: string;
+  provider: "claude" | "codex";
   project_dir: string;
   project_label: string;
   file_path: string;
@@ -28,6 +29,7 @@ type SessionRowSql = {
 function rowToSession(r: SessionRowSql): Session {
   return {
     id: r.id,
+    provider: r.provider,
     projectDir: r.project_dir,
     projectLabel: r.project_label,
     filePath: r.file_path,
@@ -58,16 +60,17 @@ function parseTokenUsage(raw: string | null): Session["tokenUsage"] {
 export function upsertSession(db: Db, s: Session): void {
   db.prepare(
     `INSERT INTO sessions
-       (id, project_dir, project_label, file_path, file_mtime, file_size,
+       (id, provider, project_dir, project_label, file_path, file_mtime, file_size,
         started_at, last_activity, git_branch, message_count, user_msg_count,
         compact_count, first_prompt, ai_title, cwd, token_usage,
         inferred_dir, inferred_hits, inferred_launch_hits, inferred_at, indexed_at)
      VALUES
-       (@id, @projectDir, @projectLabel, @filePath, @fileMtime, @fileSize,
+       (@id, @provider, @projectDir, @projectLabel, @filePath, @fileMtime, @fileSize,
         @startedAt, @lastActivity, @gitBranch, @messageCount, @userMsgCount,
         @compactCount, @firstPrompt, @aiTitle, @cwd, @tokenUsage,
         @inferredDir, @inferredHits, @inferredLaunchHits, @indexedAt, @indexedAt)
      ON CONFLICT(id) DO UPDATE SET
+       provider      = excluded.provider,
        project_dir   = excluded.project_dir,
        project_label = excluded.project_label,
        file_path     = excluded.file_path,
@@ -90,6 +93,7 @@ export function upsertSession(db: Db, s: Session): void {
        indexed_at    = excluded.indexed_at`
   ).run({
     ...s,
+    provider: s.provider ?? "claude",
     tokenUsage: s.tokenUsage ? JSON.stringify(s.tokenUsage) : null,
     inferredDir: s.inferredDir ?? null,
     inferredHits: s.inferredHits ?? 0,

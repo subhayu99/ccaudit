@@ -4,7 +4,7 @@
 
 # ccaudit
 
-**Browse, search, and audit your Claude Code session history — as a warm, Obsidian-style knowledge base in your browser.**
+**Browse, search, and audit your Claude Code and Codex session history — as a warm, Obsidian-style knowledge base in your browser.**
 
 [![npm](https://img.shields.io/npm/v/@subhayu99/ccaudit.svg?color=cf9152)](https://www.npmjs.com/package/@subhayu99/ccaudit)
 &nbsp;[![license: MIT](https://img.shields.io/badge/license-MIT-d2a85f.svg)](./LICENSE)
@@ -54,7 +54,7 @@ ccaudit                  # serve (default)
 
 > **Requirements: Node 22.5+ — that's it.** ccaudit has **no native dependencies**: its database is Node's built-in SQLite (`node:sqlite`), so there's nothing to compile and no platform-specific binaries to match. It runs identically on macOS, Linux, and Windows. (On Node 22.5–23.3 it transparently enables Node's `--experimental-sqlite` flag for you; Node 24+ needs nothing.)
 
-First run indexes `~/.claude/projects/`; subsequent runs only re-read changed files (an append-only fast path keeps reindex in the tens of milliseconds). Already have it running? `ccaudit open` just opens the browser without re-indexing. Hit a snag? See [Troubleshooting](#troubleshooting).
+First run indexes `~/.claude/projects/`, `~/.codex/sessions/`, and `~/.codex/archived_sessions/`; subsequent runs only re-read changed files (an append-only fast path keeps reindex in the tens of milliseconds). Already have it running? `ccaudit open` just opens the browser without re-indexing. Hit a snag? See [Troubleshooting](#troubleshooting).
 
 ## What you'd use it for
 
@@ -74,7 +74,7 @@ ccaudit is the layer between you and the pile of JSONL Claude Code leaves behind
 
 **Curate it into a knowledge base.** AI-name untitled sessions in one click, cluster everything into topics, and hide noisy directories or one-off experiments — losslessly — so what's left reads like a tidy archive.
 
-**Pick up exactly where you left off.** Every session has a **Resume** command that re-launches Claude Code in the exact original working directory — no hunting for which folder it was.
+**Pick up exactly where you left off.** Every session has a **Resume** command that re-launches the original agent (Claude Code or Codex) in the recorded working directory — no hunting for which folder it was.
 
 ## What you get
 
@@ -102,7 +102,7 @@ ccaudit start                 # run the UI in the background (survives the termi
 ccaudit stop                  # stop the background server          ccaudit status  # is it running?
 ccaudit open                  # open the UI in your browser — reuses a running instance (no re-index)
 ccaudit export <id>           # save a session transcript to Markdown/HTML  --format md|html  --raw  --out <path>
-ccaudit reindex [--force]     # rebuild the SQLite index from ~/.claude/projects/
+ccaudit reindex [--force]     # rebuild the SQLite index from Claude Code + Codex logs
 ccaudit list [--project d]    # list indexed sessions in a table   --limit <n>
 ccaudit search <query>        # full-text search from the terminal  --limit <n>
 ccaudit stats                 # index summary stats + top tool usage
@@ -121,7 +121,7 @@ ccaudit watch --install       # (macOS) background watcher so running sessions s
 
 ## Connect to Claude Code (MCP)
 
-ccaudit ships a [Model Context Protocol](https://modelcontextprotocol.io) stdio server over your local index, so any MCP client (Claude Code, Claude Desktop, Cursor, …) can search and read your past Claude Code work — turning months of buried sessions into a tool your agent can actually call. Read-only and 100% local.
+ccaudit ships a [Model Context Protocol](https://modelcontextprotocol.io) stdio server over your local index, so any MCP client (Claude Code, Codex, Claude Desktop, Cursor, …) can search and read your past Claude Code and Codex work — turning months of buried sessions into a tool your agent can actually call. Read-only and 100% local.
 
 **Easiest — one click from the app.** Open ccaudit and click **Connect** under *Claude Code* in the sidebar footer. It asks your `claude` CLI to register ccaudit for you; click again any time to disconnect.
 
@@ -162,6 +162,37 @@ claude mcp add ccaudit -- npx -y @subhayu99/ccaudit mcp
 
 Then just ask: *"Search my ccaudit history for when I set up the auth flow"* or *"What did I decide about the DB schema last month?"* — and Claude answers from your own past sessions. (After connecting, restart Claude Code or run `/mcp` to load the tools.)
 
+## Codex support
+
+Codex sessions appear alongside Claude Code sessions in the library, search, graphs,
+transcript reader, exports, and MCP results. Provider badges identify the agent, and
+Resume emits `codex resume <native-session-id>` for Codex. Existing Claude session
+IDs and saved titles remain intact; Codex index IDs use `codex:<native-session-id>`.
+
+Discovery reads active and archived rollout JSONL files recursively. It uses
+`session_meta` for session identity and working directory, and reads conversation
+items, tool calls/results, compactions, and token usage. Repeated cumulative usage
+snapshots and paired event/response messages are deduplicated. Changed Codex logs
+are rebuilt so a late response item can replace its earlier event echo.
+
+Costs are estimates using known models' standard, short-context API rates from
+[OpenAI's pricing documentation](https://developers.openai.com/api/docs/pricing).
+They do not represent ChatGPT subscription charges and omit service-tier and
+long-context multipliers. Unknown model prices are marked unavailable or partial;
+their tokens still count. Source logs are never modified by Codex indexing.
+
+The **Live** process registry and **Move session** feature remain Claude-specific.
+Codex history refreshes through the same periodic indexer as Claude history. Optional
+AI naming, topics, and Ask still require the local `claude` CLI. The sidebar's
+Connect button registers with Claude Code; to expose the shared history to Codex,
+add the same stdio server to its MCP configuration:
+
+```toml
+[mcp_servers.ccaudit]
+command = "npx"
+args = ["-y", "@subhayu99/ccaudit", "mcp"]
+```
+
 ## Configuration
 
 ccaudit works with zero config. To override the defaults, set these before running:
@@ -169,6 +200,8 @@ ccaudit works with zero config. To override the defaults, set these before runni
 | Variable | Default | What it controls |
 |----------|---------|------------------|
 | `CCAUDIT_PROJECTS_DIR` | `~/.claude/projects` | Where Claude Code stores session JSONL — point elsewhere to index a different location |
+| `CCAUDIT_CODEX_DIR` | `$CODEX_HOME/sessions` or `~/.codex/sessions` | Codex rollout root; setting it also disables the default archive root |
+| `CCAUDIT_CODEX_ARCHIVE_DIR` | `$CODEX_HOME/archived_sessions` or `~/.codex/archived_sessions` | Optional archive root; set explicitly when using a custom sessions root |
 | `CCAUDIT_HOME` | `~/.ccaudit` | Where ccaudit keeps its index (`index.db`), config, exports, and logs |
 | `CCAUDIT_SESSIONS_DIR` | `~/.claude/sessions` | The live-session registry read by `ccaudit live` |
 
@@ -176,7 +209,7 @@ The server port is `--port <n>` on `serve`/`open` (default `4321`). The UI alway
 
 ## How it works
 
-- **Indexer** walks `~/.claude/projects/`, parses each JSONL session, and stores sessions + messages in a local SQLite database (`~/.ccaudit/index.db`) via Node's built-in `node:sqlite`, with an FTS5 virtual table for search.
+- **Indexer** walks Claude project directories and Codex active/archive directories, parses each JSONL session, and stores sessions + messages in a local SQLite database (`~/.ccaudit/index.db`) via Node's built-in `node:sqlite`, with an FTS5 virtual table for search.
 - **Repo identity (deterministic).** Identity rests only on things that are intrinsic, immutable, and shared — i.e. **git commit hashes**. At index time, while a directory still exists, ccaudit captures a bounded set of its commit hashes (plus a credential-stripped remote). Working directories that share any commit hash are unioned into one repo via union-find. Shallow clones (no root commit) still match on recent commits. No VCS → no provable cross-copy identity (and none is invented). Captured remotes are **always stripped of embedded credentials**.
 
 ## Tech
@@ -185,7 +218,7 @@ Astro 5 SSR (Node standalone) · **`node:sqlite`** (Node's built-in SQLite) + FT
 
 ## Privacy
 
-**The core is fully local and offline.** Indexing, browsing, search, the graph, the dashboard, and the MCP server never touch the network — the index lives at `~/.ccaudit/`, and ccaudit reads `~/.claude/projects/` **read-only** (it never writes there).
+**The core is fully local and offline.** Indexing, browsing, search, the graph, the dashboard, and the MCP server never touch the network — the index lives at `~/.ccaudit/`, and normal indexing reads Claude and Codex logs **read-only**. The separate Claude-only Move feature requires consent before changing a source log.
 
 **The optional AI features are the exception.** Session titling (`ccaudit name`), topic clustering, AI thread names, and *Ask your history* shell out to the `claude` CLI on your machine — which sends the relevant session content to Anthropic's API, exactly as Claude Code itself does. They run **only when you explicitly invoke them**; ignore them and ccaudit stays entirely offline.
 

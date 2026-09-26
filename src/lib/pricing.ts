@@ -8,7 +8,7 @@ export type ModelUsage = { input: number; output: number; cacheRead: number; cac
 export type TokenUsage = Record<string, ModelUsage>;
 
 /** USD per 1,000,000 tokens. */
-type Rate = { input: number; output: number; cacheRead: number; cacheWrite: number };
+type Rate = { input: number; output: number; cacheRead: number; cacheWrite: number | null };
 
 const RATES: Record<"opus" | "sonnet" | "haiku", Rate> = {
   opus: { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
@@ -16,12 +16,41 @@ const RATES: Record<"opus" | "sonnet" | "haiku", Rate> = {
   haiku: { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
 };
 
-/** Map a model id to a rate family. Unknown/synthetic models fall back to sonnet (a mid estimate). */
-function rateFor(model: string): Rate {
+// OpenAI standard, short-context API estimates, checked 2026-09-26:
+// https://developers.openai.com/api/docs/pricing and /api/docs/models/<model>.
+// Excludes service-tier/long-context multipliers and subscription billing.
+const OPENAI_RATES: Record<string, Rate> = {
+  "gpt-6-astra": { input: 10, cacheRead: 1, cacheWrite: 12.5, output: 50 },
+  "gpt-6-sol": { input: 2, cacheRead: .2, cacheWrite: 2.5, output: 10 },
+  "gpt-6-luna": { input: .1, cacheRead: .01, cacheWrite: .125, output: .5 },
+  "gpt-5.6-sol": { input: 4, cacheRead: .4, cacheWrite: 5, output: 20 },
+  "gpt-5.6-terra": { input: 2, cacheRead: .2, cacheWrite: 2.5, output: 12 },
+  "gpt-5.6-luna": { input: .2, cacheRead: .02, cacheWrite: .25, output: 1.2 },
+  "gpt-5.5": { input: 5, cacheRead: .5, cacheWrite: null, output: 30 },
+  "gpt-5.4": { input: 2.5, cacheRead: .25, cacheWrite: null, output: 15 },
+  "gpt-5.4-mini": { input: .75, cacheRead: .075, cacheWrite: null, output: 4.5 },
+  "gpt-5.4-nano": { input: .2, cacheRead: .02, cacheWrite: null, output: 1.25 },
+  "gpt-5.3-codex": { input: 1.75, cacheRead: .175, cacheWrite: null, output: 14 },
+  "gpt-5.2-codex": { input: 1.75, cacheRead: .175, cacheWrite: null, output: 14 },
+  "gpt-5.1-codex": { input: 1.25, cacheRead: .125, cacheWrite: null, output: 10 },
+};
+
+function rateFor(model: string): Rate | null {
   const m = model.toLowerCase();
-  if (m.includes("opus")) return RATES.opus;
-  if (m.includes("haiku")) return RATES.haiku;
-  return RATES.sonnet; // sonnet, unknown, or anything else
+  const openai = OPENAI_RATES[m] ?? OPENAI_RATES[m.replace(/-\d{4}-\d{2}-\d{2}$/, "")];
+  if (openai) return openai;
+  if (m.startsWith("claude-") && m.includes("opus")) return RATES.opus;
+  if (m.startsWith("claude-") && m.includes("haiku")) return RATES.haiku;
+  if (m.startsWith("claude-") && m.includes("sonnet")) return RATES.sonnet;
+  return null;
+}
+
+/** Unknown prices are excluded from cost totals, but token counts are retained. */
+export function hasUnpricedUsage(usage: TokenUsage | null | undefined): boolean {
+  return Object.entries(usage ?? {}).some(([model, u]) => {
+    const r = rateFor(model);
+    return !r || (u.cacheCreation > 0 && r.cacheWrite === null);
+  });
 }
 
 export function emptyModelUsage(): ModelUsage {
@@ -31,11 +60,12 @@ export function emptyModelUsage(): ModelUsage {
 /** Cost of one model's usage, in USD. */
 export function modelCostUsd(model: string, u: ModelUsage): number {
   const r = rateFor(model);
+  if (!r) return 0;
   return (
     (u.input * r.input +
       u.output * r.output +
       u.cacheRead * r.cacheRead +
-      u.cacheCreation * r.cacheWrite) /
+      u.cacheCreation * (r.cacheWrite ?? 0)) /
     1_000_000
   );
 }

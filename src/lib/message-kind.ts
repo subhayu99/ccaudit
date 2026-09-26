@@ -38,6 +38,8 @@ const COMMAND_WRAPPER = /^\s*<(command-name|command-message|command-args|local-c
 export function classifyMessage(m: MessageRow): MessageKind {
   if (m.isCompactSummary) return "compact-summary";
   if (m.isSidechain) return "sidechain";
+  if (m.type === "tool-use") return "tool-use";
+  if (m.type === "tool-result") return "tool-result";
   if (NOISE_TYPES.has(m.type)) return "noise";
 
   if (m.type === "attachment") {

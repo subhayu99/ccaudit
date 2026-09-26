@@ -2,7 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import kleur from "kleur";
 import { openDb } from "../db/init.js";
-import { CLAUDE_PROJECTS_DIR, INDEX_DB_PATH } from "../paths.js";
+import { CLAUDE_PROJECTS_DIR, CODEX_DIRS, INDEX_DB_PATH } from "../paths.js";
 
 // `optional: true` => a failure is a warning, not a hard error (e.g. the claude CLI,
 // which only gates AI thread-naming / topic clustering).
@@ -11,29 +11,18 @@ type Check = { name: string; ok: boolean; detail: string; optional?: boolean };
 export async function doctorCommand(): Promise<void> {
   const checks: Check[] = [];
 
-  // Projects dir
-  try {
-    if (!existsSync(CLAUDE_PROJECTS_DIR)) {
-      checks.push({
-        name: "projects dir",
-        ok: false,
-        detail: `not found: ${CLAUDE_PROJECTS_DIR}`,
-      });
-    } else {
-      const st = statSync(CLAUDE_PROJECTS_DIR);
-      checks.push({
-        name: "projects dir",
-        ok: st.isDirectory(),
-        detail: st.isDirectory() ? `OK at ${CLAUDE_PROJECTS_DIR}` : "path exists but is not a directory",
-      });
+  // Either provider can be the only installed agent. Missing optional roots are warnings.
+  let availableRoots = 0;
+  for (const [name, root] of [["projects dir", CLAUDE_PROJECTS_DIR], ...CODEX_DIRS.map(p => ["Codex sessions dir", p])] as Array<[string, string]>) {
+    try {
+      const ok = existsSync(root) && statSync(root).isDirectory();
+      if (ok) availableRoots++;
+      checks.push({ name, ok, optional: true, detail: ok ? `OK at ${root}` : `not found or not a directory: ${root}` });
+    } catch (e) {
+      checks.push({ name, ok: false, optional: true, detail: String(e) });
     }
-  } catch (e) {
-    checks.push({
-      name: "projects dir",
-      ok: false,
-      detail: e instanceof Error ? e.message : String(e),
-    });
   }
+  if (!availableRoots) checks.push({ name: "session sources", ok: false, detail: "No Claude Code or Codex session directory found." });
 
   // Index db
   try {

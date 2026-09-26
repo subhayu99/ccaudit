@@ -9,6 +9,7 @@ const require = createRequire(import.meta.url);
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS sessions (
   id              TEXT PRIMARY KEY,
+  provider        TEXT NOT NULL DEFAULT 'claude',
   project_dir     TEXT NOT NULL,
   project_label   TEXT NOT NULL,
   file_path       TEXT NOT NULL,
@@ -264,6 +265,9 @@ export function openDb(path: string): Db {
   db.exec("PRAGMA mmap_size = 268435456");
   db.exec(SCHEMA);
   const cols = db.pragma("table_info(sessions)") as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "provider")) {
+    db.exec("ALTER TABLE sessions ADD COLUMN provider TEXT NOT NULL DEFAULT 'claude'");
+  }
   if (!cols.some((c) => c.name === "cwd")) {
     db.exec("ALTER TABLE sessions ADD COLUMN cwd TEXT");
   }

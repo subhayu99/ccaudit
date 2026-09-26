@@ -17,6 +17,12 @@ const fmtTok = (n: number) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 
 // Averages & span
 const span = getHistorySpan(db, range);
 const avgCost = stats.totalSessions ? spend.totalCostUsd / stats.totalSessions : 0;
+const spendText = spend.hasUnpricedUsage
+  ? (spend.totalCostUsd > 0 ? `${formatUsd(spend.totalCostUsd)} partial` : "unavailable")
+  : formatUsd(spend.totalCostUsd);
+const avgCostText = spend.hasUnpricedUsage
+  ? (spend.totalCostUsd > 0 ? `${formatUsd(avgCost)} partial` : "unavailable")
+  : formatUsd(avgCost);
 const avgMsgs = stats.totalSessions ? Math.round(stats.totalMessages / stats.totalSessions) : 0;
 const fmtDate = (ms: number) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 const spanText = span.firstActivity && span.lastActivity
@@ -73,8 +79,8 @@ const totalTools = tools.reduce((s, t) => s + t.count, 0);
       ["messages", stats.totalMessages.toLocaleString(), "var(--text)"],
       ["with compacts", String(stats.sessionsWithCompacts), "var(--c-orange)"],
       ["tokens", fmtTok(spend.totalTokens), "var(--text)"],
-      ["est. AI spend", formatUsd(spend.totalCostUsd), "var(--amber-bright)"],
-      ["avg $ / session", formatUsd(avgCost), "var(--amber-bright)"],
+      ["est. AI spend", spendText, "var(--amber-bright)"],
+      ["avg $ / session", avgCostText, "var(--amber-bright)"],
       ["msgs / session", avgMsgs.toLocaleString(), "var(--text)"],
       ["active days", String(span.activeDays), "var(--c-green)"]].map(([label, val, color]) => (
       <div class="rounded-xl px-5 py-4" style="background:var(--panel); border:1px solid var(--border-soft);">
@@ -86,16 +92,16 @@ const totalTools = tools.reduce((s, t) => s + t.count, 0);
 
   {spend.byModel.length > 0 && (
     <>
-      <h3 class="font-serif text-[16px] mb-3" style="color:var(--text);">AI spend by model <span class="text-[12px]" style="color:var(--text-faint);">(estimated)</span></h3>
+      <h3 class="font-serif text-[16px] mb-3" style="color:var(--text);">AI spend by model <span class="text-[12px]" style="color:var(--text-faint);">{spend.hasUnpricedUsage ? "(partial estimate)" : "(estimated)"}</span></h3>
       <div class="rounded-xl p-4 mb-8" style="background:var(--panel); border:1px solid var(--border-soft);">
         {spend.byModel.map((m) => (
           <div class="flex items-center gap-3 mb-1.5">
             <span class="font-mono-w text-[12px] w-44 shrink-0 truncate" style="color:var(--text-dim);">{m.model}</span>
-            <span class="track"><span class="bar" style={`width:${Math.max(2, (m.costUsd / spendMax) * 100)}%;`}></span></span>
-            <span class="font-mono-w text-[11.5px] w-24 text-right tabular-nums shrink-0" style="color:var(--amber-bright);">{formatUsd(m.costUsd)}</span>
+            <span class="track"><span class="bar" style={`width:${m.costUsd > 0 ? Math.max(2, (m.costUsd / spendMax) * 100) : 0}%;`}></span></span>
+            <span class="font-mono-w text-[11.5px] w-28 text-right tabular-nums shrink-0" style="color:var(--amber-bright);">{m.hasUnpricedUsage ? (m.costUsd > 0 ? `${formatUsd(m.costUsd)} partial` : "unavailable") : formatUsd(m.costUsd)}</span>
           </div>
         ))}
-        <div class="text-[11px] mt-2.5" style="color:var(--text-faint);">Estimated from captured token counts × public per-model rates — not exact billing.</div>
+        <div class="text-[11px] mt-2.5" style="color:var(--text-faint);">{spend.hasUnpricedUsage ? "Some token usage has no available price; shown amounts exclude it." : "Estimated from captured token counts × public per-model rates — not exact billing."}</div>
       </div>
     </>
   )}

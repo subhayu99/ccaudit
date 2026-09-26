@@ -24,7 +24,7 @@ export async function startMcpServer(): Promise<void> {
     "list_sessions",
     {
       description:
-        "List indexed Claude Code sessions, most recent first. Optionally filter by project directory.",
+        "List indexed Claude Code and Codex sessions, most recent first. Optionally filter by project directory.",
       inputSchema: { limit: z.number().optional(), project: z.string().optional() },
     },
     async (args) => json(toolListSessions(db, args))
@@ -63,7 +63,7 @@ export async function startMcpServer(): Promise<void> {
     {
       description:
         "Get messages by author — within one session or across your whole history. " +
-        "author: 'user' (your prompts), 'assistant' (Claude's replies), 'tool' (tool calls/results), " +
+        "author: 'user' (your prompts), 'assistant' (agent replies), 'tool' (tool calls/results), " +
         "or 'agent' (sub-agent / Task turns). Pass sessionId to scope to one session; otherwise returns " +
         "the most recent matches across all sessions (newest first, hidden directories excluded). " +
         "Optional `contains` filters to messages whose text includes that substring.",

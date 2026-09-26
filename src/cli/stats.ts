@@ -28,12 +28,18 @@ export async function statsCommand(): Promise<void> {
     if (spend.byModel.length > 0) {
       const fmtTok = (n: number) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n));
       console.log(`  Total tokens:          ${kleur.cyan(fmtTok(spend.totalTokens))}`);
-      console.log(`  Est. AI spend:         ${kleur.yellow(formatUsd(spend.totalCostUsd))} ${kleur.dim("(estimated)")}`);
+      const spendText = spend.hasUnpricedUsage
+        ? (spend.totalCostUsd > 0 ? `${formatUsd(spend.totalCostUsd)} (partial)` : "unavailable")
+        : `${formatUsd(spend.totalCostUsd)} (estimated)`;
+      console.log(`  Est. AI spend:         ${kleur.yellow(spendText)}`);
       console.log();
-      console.log(kleur.bold("Spend by model") + kleur.dim(" (estimated)"));
+      console.log(kleur.bold("Spend by model") + kleur.dim(spend.hasUnpricedUsage ? " (partial estimate)" : " (estimated)"));
       const w = Math.max(...spend.byModel.map((m) => m.model.length));
       for (const m of spend.byModel) {
-        console.log(`  ${m.model.padEnd(w)}  ${kleur.yellow(formatUsd(m.costUsd).padStart(9))}  ${kleur.dim(fmtTok(m.tokens) + " tok")}`);
+        const costText = m.hasUnpricedUsage
+          ? (m.costUsd > 0 ? `${formatUsd(m.costUsd)} partial` : "unavailable")
+          : formatUsd(m.costUsd);
+        console.log(`  ${m.model.padEnd(w)}  ${kleur.yellow(costText.padStart(9))}  ${kleur.dim(fmtTok(m.tokens) + " tok")}`);
       }
     }
 

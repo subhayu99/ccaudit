@@ -1,7 +1,11 @@
 import type { TokenUsage } from "./lib/pricing.js";
 
+export type SessionProvider = "claude" | "codex";
+
 // Session row mirrored from SQLite. `null` where the source value was missing.
 export type Session = {
+  /** Absent on older producers means Claude. Codex IDs use the codex: namespace. */
+  provider?: SessionProvider;
   id: string;
   projectDir: string;
   projectLabel: string;

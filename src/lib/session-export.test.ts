@@ -58,6 +58,11 @@ describe("renderSessionMarkdown", () => {
     expect(md).toContain("`abcdef12-3456-7890-aaaa-bbbbccccdddd`");
     expect(md).toContain("1 compaction(s)");
   });
+  it("identifies a Codex session and keeps its filename portable", () => {
+    const codex = { ...session, provider: "codex" as const, id: "codex:thread-123" };
+    expect(renderSessionMarkdown(codex, messages)).toContain("**Provider:** Codex");
+    expect(exportFilename(codex, "md")).toBe("ccaudit-wire-up-the-auth-flow-thread-1.md");
+  });
 
   it("keeps user + assistant turns, drops noise & command echoes", () => {
     const md = renderSessionMarkdown(session, messages);

@@ -7,7 +7,7 @@ import { openDb } from "../db/init.js";
 import { indexAll } from "../indexer/index-runner.js";
 import { createIndexReporter } from "./index-reporter.js";
 import { isPortFree, findFreePort, whoHasPort, formatPortInUse } from "./port.js";
-import { INDEX_DB_PATH, CLAUDE_PROJECTS_DIR, LOGS_DIR } from "../paths.js";
+import { INDEX_DB_PATH, LOGS_DIR } from "../paths.js";
 import { createInterface } from "node:readline";
 import { readConfig, writeConfig } from "../lib/config.js";
 import { installAgent, agentInstalled } from "../lib/launchd.js";
@@ -92,15 +92,15 @@ export async function serveCommand(opts: { port?: string; open?: boolean; watch?
   await maybeOfferWatch(opts.watch);
 
   console.log(kleur.bold("ccaudit") + kleur.dim(" · indexing your Claude Code history"));
-  console.log(kleur.dim(`${CLAUDE_PROJECTS_DIR} · 100% local, nothing is uploaded · first run only — re-runs are instant`));
+  console.log(kleur.dim(`Claude Code + Codex logs · 100% local, nothing is uploaded · first run only — re-runs are instant`));
   const db = openDb(INDEX_DB_PATH);
   const reporter = createIndexReporter();
   const started = Date.now();
   try {
-    const stats = await indexAll(db, { baseDir: CLAUDE_PROJECTS_DIR, onProgress: reporter.onProgress });
+    const stats = await indexAll(db, { onProgress: reporter.onProgress });
     if (stats.sessionsIndexed === 0 && stats.sessionsSkipped === 0) {
       reporter.stop();
-      console.log(kleur.yellow(`  No Claude Code sessions found in ${CLAUDE_PROJECTS_DIR}`));
+      console.log(kleur.yellow("  No Claude Code or Codex sessions found. Run ccaudit doctor to check source directories."));
       console.log(kleur.dim(`  Set CCAUDIT_PROJECTS_DIR to point elsewhere, then re-run.`));
     } else {
       const secs = Math.max(1, Math.round((Date.now() - started) / 1000));
@@ -145,7 +145,7 @@ export async function serveCommand(opts: { port?: string; open?: boolean; watch?
   // the WAL.
   const periodicDb = openDb(INDEX_DB_PATH);
   const periodic = makePeriodicIndexer(
-    () => indexAll(periodicDb, { baseDir: CLAUDE_PROJECTS_DIR }).then(() => undefined),
+    () => indexAll(periodicDb, {}).then(() => undefined),
     { intervalMs: PERIODIC_INDEX_MS }
   );
   periodic.start();

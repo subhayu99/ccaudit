@@ -23,6 +23,7 @@ export const GET: APIRoute = ({ url }) => {
   const db = getDb();
   const s = getSession(db, id);
   if (!s) return json({ error: "session not found" }, 404);
+  if (s.provider === "codex") return json({ error: "Moving Codex session logs is not supported." }, 400);
   const suggestions = suggestSessionHome(getSessionMessages(db, id), { currentDir: s.cwd });
   return json({
     sessionId: id,
@@ -45,6 +46,7 @@ export const POST: APIRoute = async ({ request }) => {
   const db = getDb();
   const s = getSession(db, sessionId);
   if (!s) return json({ error: "session not found" }, 404);
+  if (s.provider === "codex") return json({ error: "Moving Codex session logs is not supported." }, 400);
   if (runningIds().has(sessionId)) return json({ error: "That session is currently running — close it first." }, 409);
   if (!existsSync(targetDir)) return json({ error: `target directory doesn't exist: ${targetDir}` }, 400);
 

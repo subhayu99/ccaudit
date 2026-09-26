@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { modelCostUsd, sessionCostUsd, totalTokens, primaryModel, formatUsd } from "../src/lib/pricing.js";
+import { modelCostUsd, sessionCostUsd, totalTokens, primaryModel, formatUsd, hasUnpricedUsage } from "../src/lib/pricing.js";
 
 describe("pricing", () => {
   it("computes opus cost from per-million rates", () => {
@@ -14,8 +14,8 @@ describe("pricing", () => {
     // sonnet: 1M cacheRead @0.3 + 1M cacheCreation @3.75 = 4.05
     expect(modelCostUsd("claude-sonnet-4-6", { input: 0, output: 0, cacheRead: 1_000_000, cacheCreation: 1_000_000 })).toBeCloseTo(4.05, 6);
   });
-  it("falls back to sonnet for unknown models", () => {
-    expect(modelCostUsd("mystery", { input: 1_000_000, output: 0, cacheRead: 0, cacheCreation: 0 })).toBeCloseTo(3, 6);
+  it("does not price unknown models as Claude", () => {
+    expect(modelCostUsd("mystery", { input: 1_000_000, output: 0, cacheRead: 0, cacheCreation: 0 })).toBe(0);
   });
   it("sums cost across models in a session", () => {
     const usage = {
@@ -40,4 +40,15 @@ describe("pricing", () => {
     expect(formatUsd(1.234)).toBe("$1.23");
     expect(formatUsd(4567)).toBe("$4,567");
   });
+});
+
+it("prices Codex models with OpenAI rates and flags unavailable rates", () => {
+  const u = { input: 1_000_000, cacheRead: 1_000_000, output: 1_000_000, cacheCreation: 0 };
+  expect(modelCostUsd("gpt-5.3-codex", u)).toBeCloseTo(15.925);
+  expect(modelCostUsd("gpt-6-sol", u)).toBeCloseTo(12.2);
+  expect(modelCostUsd("gpt-5.4-2026-03-05", u)).toBeCloseTo(17.75);
+  expect(hasUnpricedUsage({ "gpt-future": u })).toBe(true);
+  expect(hasUnpricedUsage({ "codex-unknown": u })).toBe(true);
+  expect(hasUnpricedUsage({ "gpt-5.3-codex": u })).toBe(false);
+  expect(hasUnpricedUsage({ "gpt-5.3-codex": { ...u, cacheCreation: 100 } })).toBe(true);
 });

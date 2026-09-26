@@ -11,6 +11,10 @@ function msg(p: Partial<MessageRow> = {}): MessageRow {
 }
 
 describe("classifyMessage — command / caveat de-noise", () => {
+  it("classifies normalized Codex tool rows", () => {
+    expect(classifyMessage(msg({ type: "tool-use", role: "assistant", textContent: "functions.exec" }))).toBe("tool-use");
+    expect(classifyMessage(msg({ type: "tool-result", role: "tool", textContent: "done" }))).toBe("tool-result");
+  });
   it("classifies a slash-command echo as noise", () => {
     expect(classifyMessage(msg({ textContent: "<command-name>/context</command-name>" }))).toBe("noise");
   });

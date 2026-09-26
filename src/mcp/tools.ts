@@ -26,6 +26,7 @@ export function toolListSessions(
   const sessions = listSessions(db, { limit: clampLimit(args.limit, 30), projectDir: args.project });
   return sessions.map((s) => ({
     id: s.id,
+    provider: s.provider ?? "claude",
     project: s.projectLabel,
     projectDir: s.projectDir,
     lastActivity: s.lastActivity,
@@ -52,6 +53,7 @@ export function toolSearchSessions(
     const sess = getSession(db, h.sessionId);
     return {
       sessionId: h.sessionId,
+      provider: sess?.provider ?? "claude",
       lineNo: h.lineNo,
       project: sess?.projectLabel ?? null,
       // strip the <mark> tags FTS adds, for a clean snippet
@@ -68,6 +70,7 @@ export function toolGetSession(
   if (!session) return { error: "session not found", sessionId: args.sessionId };
   const base = {
     id: session.id,
+    provider: session.provider ?? "claude",
     project: session.projectLabel,
     projectDir: session.projectDir,
     cwd: session.cwd,
@@ -162,7 +165,7 @@ export function toolListMismatchedSessions(
       `SELECT id, project_label, project_dir, cwd, inferred_dir,
               inferred_hits, inferred_launch_hits, ai_title, first_prompt
          FROM sessions
-        WHERE inferred_dir IS NOT NULL
+        WHERE provider = 'claude' AND inferred_dir IS NOT NULL
           AND inferred_hits >= inferred_launch_hits * ${MISMATCH_DOMINANCE}
         ORDER BY (inferred_hits - inferred_launch_hits) DESC, inferred_hits DESC`
     )
@@ -179,7 +182,7 @@ export function toolListMismatchedSessions(
           (
             db
               .prepare(
-                `SELECT id FROM sessions WHERE inferred_dir IS NOT NULL
+                `SELECT id FROM sessions WHERE provider = 'claude' AND inferred_dir IS NOT NULL
                    AND inferred_hits >= inferred_launch_hits * ${MISMATCH_DOMINANCE} AND (${keep.sql})`
               )
               .all(keep.params) as Array<{ id: string }>
@@ -266,6 +269,7 @@ export function toolApplySessionMoves(
     const targetDir = String(mv?.targetDir ?? "");
     const session = sessionId ? getSession(db, sessionId) : null;
     if (!session) { skipped.push({ sessionId, reason: "session not found in index" }); continue; }
+    if (session.provider === "codex") { skipped.push({ sessionId, reason: "moving Codex session logs is not supported" }); continue; }
     if (!targetDir) { skipped.push({ sessionId, reason: "no targetDir given" }); continue; }
     if (running.has(sessionId)) { skipped.push({ sessionId, reason: "currently running — close it in Claude Code first" }); continue; }
     if (!existsSync(targetDir)) { skipped.push({ sessionId, reason: `target directory doesn't exist: ${targetDir}` }); continue; }

@@ -21,6 +21,8 @@ describe("cli/reindex", () => {
       env: {
         ...process.env,
         CCAUDIT_HOME: tmp,
+        CCAUDIT_CODEX_DIR: join(tmp, "codex"),
+        CCAUDIT_CODEX_ARCHIVE_DIR: join(tmp, "archive"),
         CCAUDIT_PROJECTS_DIR: join(tmp, "projects"),
       },
       encoding: "utf8",
@@ -47,6 +49,8 @@ describe("cli/list", () => {
     const env = {
       ...process.env,
       CCAUDIT_HOME: tmp,
+      CCAUDIT_CODEX_DIR: join(tmp, "codex"),
+      CCAUDIT_CODEX_ARCHIVE_DIR: join(tmp, "archive"),
       CCAUDIT_PROJECTS_DIR: join(tmp, "projects"),
     };
     spawnSync("npx", ["tsx", "src/cli/index.ts", "reindex"], { env, encoding: "utf8" });
@@ -73,6 +77,8 @@ describe("cli/search", () => {
     const env = {
       ...process.env,
       CCAUDIT_HOME: tmp,
+      CCAUDIT_CODEX_DIR: join(tmp, "codex"),
+      CCAUDIT_CODEX_ARCHIVE_DIR: join(tmp, "archive"),
       CCAUDIT_PROJECTS_DIR: join(tmp, "projects"),
     };
     spawnSync("npx", ["tsx", "src/cli/index.ts", "reindex"], { env, encoding: "utf8" });
@@ -86,6 +92,8 @@ describe("cli/search", () => {
     const env = {
       ...process.env,
       CCAUDIT_HOME: tmp,
+      CCAUDIT_CODEX_DIR: join(tmp, "codex"),
+      CCAUDIT_CODEX_ARCHIVE_DIR: join(tmp, "archive"),
       CCAUDIT_PROJECTS_DIR: join(tmp, "projects"),
     };
     spawnSync("npx", ["tsx", "src/cli/index.ts", "reindex"], { env, encoding: "utf8" });
@@ -111,6 +119,8 @@ describe("cli/doctor", () => {
     const env = {
       ...process.env,
       CCAUDIT_HOME: tmp,
+      CCAUDIT_CODEX_DIR: join(tmp, "codex"),
+      CCAUDIT_CODEX_ARCHIVE_DIR: join(tmp, "archive"),
       CCAUDIT_PROJECTS_DIR: join(tmp, "projects"),
     };
     spawnSync("npx", ["tsx", "src/cli/index.ts", "reindex"], { env, encoding: "utf8" });
@@ -124,6 +134,8 @@ describe("cli/doctor", () => {
     const env = {
       ...process.env,
       CCAUDIT_HOME: tmp,
+      CCAUDIT_CODEX_DIR: join(tmp, "codex"),
+      CCAUDIT_CODEX_ARCHIVE_DIR: join(tmp, "archive"),
       CCAUDIT_PROJECTS_DIR: join(tmp, "does-not-exist"),
     };
     const result = spawnSync("npx", ["tsx", "src/cli/index.ts", "doctor"], { env, encoding: "utf8" });

@@ -15,13 +15,14 @@ export async function listCommand(opts: { project?: string; limit?: string }): P
       console.log("(no sessions indexed — run `ccaudit reindex`)");
       return;
     }
-    const headers = ["LAST ACTIVITY", "PROJECT", "MSGS", "COMPACTS", "SESSION", "FIRST PROMPT"];
+    const headers = ["LAST ACTIVITY", "PROJECT", "PROVIDER", "MSGS", "COMPACTS", "SESSION", "FIRST PROMPT"];
     const dataRows = rows.map((r) => [
       r.lastActivity ? new Date(r.lastActivity).toISOString().slice(0, 19).replace("T", " ") : "—",
       r.projectLabel,
+      r.provider === "codex" ? "Codex" : "Claude",
       String(r.messageCount),
       String(r.compactCount),
-      r.id.slice(0, 8),
+      r.id,
       (r.firstPrompt ?? "").replace(/\s+/g, " ").slice(0, 60),
     ]);
     const widths = headers.map((h, i) =>

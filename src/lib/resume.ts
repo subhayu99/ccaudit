@@ -11,13 +11,17 @@ function psQuote(s: string): string {
  * existsSync). On POSIX the cwd is single-quoted; on Windows it's emitted as a
  * PowerShell snippet (cwd PowerShell-quoted) so it pastes safely into pwsh.
  */
-export function buildResumeCommand(sessionId: string, cwd: string | null): string {
+export function buildResumeCommand(sessionId: string, cwd: string | null, provider: "claude" | "codex" = "claude"): string {
+  const nativeId = provider === "codex" ? sessionId.replace(/^codex:/, "") : sessionId;
+  const safe = /^[A-Za-z0-9_-]+$/.test(nativeId);
+  const arg = safe ? nativeId : process.platform === "win32" ? psQuote(nativeId) : posixQuote(nativeId);
+  const resume = provider === "codex" ? `codex resume ${arg}` : `claude --resume ${arg}`;
   if (process.platform === "win32") {
     return cwd
-      ? `cd ${psQuote(cwd)}\nclaude --resume ${sessionId}`
-      : `claude --resume ${sessionId}  # original cwd unknown`;
+      ? `cd ${psQuote(cwd)}\n${resume}`
+      : `${resume}  # original cwd unknown`;
   }
   return cwd
-    ? `cd ${posixQuote(cwd)}\nclaude --resume ${sessionId}`
-    : `claude --resume ${sessionId}  # original cwd unknown`;
+    ? `cd ${posixQuote(cwd)}\n${resume}`
+    : `${resume}  # original cwd unknown`;
 }
